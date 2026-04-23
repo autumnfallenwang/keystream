@@ -1,0 +1,34 @@
+import { useState, useEffect } from "react";
+import type { User, Config } from "./types";
+
+const API_URL = "https://api.example.com/v1";
+const MAX_RETRIES = 3;
+
+interface FetchOptions {
+  method: "GET" | "POST" | "PUT" | "DELETE";
+  headers?: Record<string, string>;
+  body?: unknown;
+}
+
+export async function fetchUser(id: number): Promise<User | null> {
+  const url = `${API_URL}/users/${id}`;
+  try {
+    const res = await fetch(url, { method: "GET" });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return (await res.json()) as User;
+  } catch (err) {
+    console.error("fetchUser failed:", err);
+    return null;
+  }
+}
+
+// snake_case and CamelCase mixed
+function calc_total(items: Array<{ price: number; qty: number }>): number {
+  return items.reduce((sum, it) => sum + it.price * it.qty, 0);
+}
+
+const config: Config = {
+  enabled: true,
+  threshold: 0.95,
+  tags: ["alpha", "beta", "gamma"],
+};
