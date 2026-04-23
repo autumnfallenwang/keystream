@@ -10,7 +10,7 @@ Live task tracker. Update via `/update-progress` after finishing work. The "why"
 | 2 | Inherit tooling from teacherease (biome, vitest, CLAUDE.md, .claude, .gitignore, LICENSE, README) | done |
 | 3 | Seed `docs/design-plan.md` and `docs/progress.md` with PoC decisions | done |
 | 4 | Inherit universal infra — JSON logger, ipc facade, bump-version script, CI workflow, smoke test | done |
-| 5 | First commit (initial scaffold) | pending |
+| 5 | First commit (initial scaffold) | done |
 
 ## Phase 2 — Split typer-core
 
@@ -50,4 +50,4 @@ Live task tracker. Update via `/update-progress` after finishing work. The "why"
 
 ## What's Next
 
-Task 5 — commit the initial scaffold, then Phase 2 (split `typer-core`).
+Phase 2 — task 6: extract sender / verify / scroll / LCS / fold / stitch from [`docs/poc/typer/src/main.rs`](poc/typer/src/main.rs) into a new `typer-core/` library crate, with the PoC CLI kept as a thin shim at `typer-core/src/bin/typer.rs`.
