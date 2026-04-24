@@ -6,6 +6,10 @@
 //!   keyUp(char) / keyUp(shift) with `event_pause_ms` sleeps. NO `CGEventFlags`.
 //! - Q3: shift warmup during countdown primes VM modifier state.
 
+use crate::config::{
+    CHUNK_SIZE_LINES, CLEAR_EDITOR_SETTLE_MS, DEFAULT_WARMUP_SHIFT, EVENT_PAUSE_MS,
+    MOD_HOLD_MIN_MS, MOD_HOLD_MS, WARMUP_SETTLE_MS,
+};
 use crate::error::Result;
 use crate::event_source::EventSource;
 use crate::keymap::{
@@ -15,9 +19,9 @@ use rand::Rng;
 use std::thread;
 use std::time::Duration;
 
-/// Timing configuration for the sender. Defaults match the PoC proven
-/// against AVD (docs/poc/typer/src/main.rs). Task 9 will move these
-/// defaults into a central `config.rs` consts file.
+/// Timing configuration for the sender. Defaults read from
+/// `crate::config` (see `SendCfg::default()`). v1 clients use
+/// `SendCfg::default()`; Phase-5 settings UI will expose knobs.
 #[derive(Debug, Clone)]
 pub struct SendCfg {
     /// Sleep after each key down/up event (matches cliclick's 10ms).
@@ -35,11 +39,11 @@ pub struct SendCfg {
 impl Default for SendCfg {
     fn default() -> Self {
         Self {
-            event_pause_ms: 10,
+            event_pause_ms: EVENT_PAUSE_MS,
             char_pause_ms: 0,
             jitter_ms: 0,
-            mod_hold_ms: 10,
-            warmup_shift: true,
+            mod_hold_ms: MOD_HOLD_MS,
+            warmup_shift: DEFAULT_WARMUP_SHIFT,
         }
     }
 }
@@ -150,11 +154,11 @@ pub fn clear_editor(src: &dyn EventSource, cfg: &SendCfg) -> Result<()> {
     src.post_key(KEYCODE_A, false)?;
     thread::sleep(Duration::from_millis(cfg.mod_hold_ms));
     src.post_key(KEYCODE_CONTROL, false)?;
-    thread::sleep(Duration::from_millis(150));
+    thread::sleep(Duration::from_millis(CLEAR_EDITOR_SETTLE_MS));
     src.post_key(KEYCODE_DELETE, true)?;
     thread::sleep(Duration::from_millis(cfg.event_pause_ms));
     src.post_key(KEYCODE_DELETE, false)?;
-    thread::sleep(Duration::from_millis(150));
+    thread::sleep(Duration::from_millis(CLEAR_EDITOR_SETTLE_MS));
     Ok(())
 }
 
@@ -162,9 +166,9 @@ pub fn clear_editor(src: &dyn EventSource, cfg: &SendCfg) -> Result<()> {
 /// shifted character doesn't drop.
 pub fn warmup_shift(src: &dyn EventSource, cfg: &SendCfg) -> Result<()> {
     src.post_key(KEYCODE_SHIFT, true)?;
-    thread::sleep(Duration::from_millis(cfg.mod_hold_ms.max(10)));
+    thread::sleep(Duration::from_millis(cfg.mod_hold_ms.max(MOD_HOLD_MIN_MS)));
     src.post_key(KEYCODE_SHIFT, false)?;
-    thread::sleep(Duration::from_millis(50));
+    thread::sleep(Duration::from_millis(WARMUP_SETTLE_MS));
     Ok(())
 }
 
@@ -233,7 +237,7 @@ pub fn chunk_text(text: &str) -> Vec<Vec<String>> {
     text.lines()
         .map(String::from)
         .collect::<Vec<_>>()
-        .chunks(crate::config::CHUNK_SIZE_LINES)
+        .chunks(CHUNK_SIZE_LINES)
         .map(<[String]>::to_vec)
         .collect()
 }

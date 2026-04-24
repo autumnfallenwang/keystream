@@ -25,7 +25,12 @@ pub mod sender;
 pub mod stitch;
 pub mod verify;
 
-pub use config::{CHUNK_SIZE_LINES, CHUNK_VERIFY_SETTLE_MS};
+pub use config::{
+    CHUNK_SIZE_LINES, CHUNK_VERIFY_SETTLE_MS, CLEAR_EDITOR_SETTLE_MS, COUNTDOWN_SECS,
+    DEFAULT_WARMUP_SHIFT, EVENT_PAUSE_MS, MAX_LINE_CHARS, MOD_HOLD_MIN_MS, MOD_HOLD_MS,
+    PAGE_UP_INTER_MS, SCROLL_MAX_PAGES, SCROLL_SETTLE_MS, SCROLL_TO_TOP_PAGE_UPS,
+    VERIFY_PASS_THRESHOLD, WARMUP_SETTLE_MS,
+};
 pub use diff::{DiffKind, DiffLine, DiffStats};
 pub use error::{Result, TyperError};
 pub use event_source::{EventSource, RealEventSource};

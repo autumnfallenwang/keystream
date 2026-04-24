@@ -1,8 +1,9 @@
 //! Multi-viewport scroll verify. Scrolls the target editor to the top
-//! via PageUp × 40 (Q5), PageDowns through the file capturing per
+//! via PageUp × N (Q5), PageDowns through the file capturing per
 //! viewport, stitches chunks by tail/head overlap, then diffs against
 //! the sent text.
 
+use crate::config::{PAGE_UP_INTER_MS, SCROLL_MAX_PAGES, SCROLL_SETTLE_MS, SCROLL_TO_TOP_PAGE_UPS};
 use crate::diff::{compute_diff, DiffLine, DiffStats};
 use crate::error::Result;
 use crate::event_source::EventSource;
@@ -15,11 +16,6 @@ use std::path::Path;
 use std::thread;
 use std::time::Duration;
 
-/// Safety cap: maximum PageDown steps to attempt.
-pub const DEFAULT_SCROLL_MAX_PAGES: u32 = 30;
-/// Wait after each scroll keystroke before screenshotting.
-pub const DEFAULT_SCROLL_SETTLE_MS: u64 = 250;
-
 pub struct ScrollCfg {
     pub max_pages: u32,
     pub settle_ms: u64,
@@ -28,8 +24,8 @@ pub struct ScrollCfg {
 impl Default for ScrollCfg {
     fn default() -> Self {
         Self {
-            max_pages: DEFAULT_SCROLL_MAX_PAGES,
-            settle_ms: DEFAULT_SCROLL_SETTLE_MS,
+            max_pages: SCROLL_MAX_PAGES,
+            settle_ms: SCROLL_SETTLE_MS,
         }
     }
 }
@@ -45,13 +41,13 @@ pub fn run_scroll_verify(
     send_cfg: &SendCfg,
     scroll_cfg: &ScrollCfg,
 ) -> Result<(DiffStats, Vec<DiffLine>)> {
-    // Q5: PageUp × 40 brute-forces scroll-to-top in any viewport.
-    log::info!("scroll_verify: PageUp x40 -> top");
-    for _ in 0..40 {
+    // Q5: PageUp × N brute-forces scroll-to-top in any viewport.
+    log::info!("scroll_verify: PageUp x{} -> top", SCROLL_TO_TOP_PAGE_UPS);
+    for _ in 0..SCROLL_TO_TOP_PAGE_UPS {
         src.post_key(KEYCODE_PAGE_UP, true)?;
         thread::sleep(Duration::from_millis(send_cfg.event_pause_ms));
         src.post_key(KEYCODE_PAGE_UP, false)?;
-        thread::sleep(Duration::from_millis(30));
+        thread::sleep(Duration::from_millis(PAGE_UP_INTER_MS));
     }
     thread::sleep(Duration::from_millis(scroll_cfg.settle_ms));
 
