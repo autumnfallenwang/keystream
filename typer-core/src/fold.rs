@@ -66,10 +66,21 @@ mod tests {
     }
 
     #[test]
-    fn folds_digit_zero_to_o() {
-        // Same as above: 'O' and 'o' are already handled by alphabetic fold;
-        // only '0' reaches this arm in practice.
-        assert_eq!(fold_char('0'), 'o');
+    fn folds_close_angle_to_guillemet_class() {
+        // Vision sometimes reads `>` as `›` (U+203A), same pattern as `<` → `‹`.
+        assert_eq!(fold_char('>'), '>');
+        assert_eq!(fold_char('›'), '>');
+    }
+
+    #[test]
+    fn folds_double_quote_variants() {
+        // Vision renders ASCII `"` as smart quotes in some fonts / contexts.
+        // U+201C LEFT DOUBLE QUOTATION MARK, U+201D RIGHT. Both fold back
+        // to ASCII `"` so sent-vs-seen comparisons don't flag typing errors
+        // when the VM displays the right char but OCR reads a curly.
+        assert_eq!(fold_char('"'), '"');
+        assert_eq!(fold_char('\u{201C}'), '"');
+        assert_eq!(fold_char('\u{201D}'), '"');
     }
 
     #[test]
@@ -77,6 +88,16 @@ mod tests {
         // 'l' stays 'l', 'I' becomes 'i' via case fold (not via 1/l/I/i arm).
         assert_eq!(fold_char('l'), 'l');
         assert_eq!(fold_char('I'), 'i');
+    }
+
+    #[test]
+    fn unmapped_char_identity() {
+        // Chars not in any fold class pass through unchanged: digits that
+        // aren't in a lookalike class, whitespace, any non-ASCII char.
+        assert_eq!(fold_char('3'), '3');
+        assert_eq!(fold_char(' '), ' ');
+        assert_eq!(fold_char('\t'), '\t');
+        assert_eq!(fold_char('é'), 'é');
     }
 
     #[test]
