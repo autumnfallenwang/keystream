@@ -114,4 +114,39 @@ mod tests {
         let b = s(&["l2", "l3", "l4", "l5", "l6"]);
         assert!(!chunks_equivalent(&a, &b));
     }
+
+    /// Three overlapping "viewport" chunks derived from the PoC sample
+    /// corpus stitch back to the original normalized lines. Exercises
+    /// `find_overlap` + `stitch_chunks` against realistic content with
+    /// well-above-k=3 overlaps at each boundary. Covers
+    /// rules/testing.md invariant #3.
+    #[test]
+    fn stitch_three_overlapping_corpus_chunks_reconstructs_original() {
+        let corpus = include_str!("../../docs/poc/samples/code_corpus.txt");
+
+        // Same normalization compute_diff / run_scroll_verify uses.
+        let normalized: Vec<String> = corpus
+            .lines()
+            .map(|l| l.trim_start().to_string())
+            .filter(|l| !l.is_empty())
+            .collect();
+        assert_eq!(normalized.len(), 29, "corpus normalized length");
+
+        // Simulate 3 viewport captures with 6-line overlap between
+        // adjacent chunks (viewport 14, step 8). Matches what
+        // scroll-verify produces when PageDown'ing through a 29-line
+        // file with a ~14-line viewport.
+        let c0: Vec<String> = normalized[0..14].to_vec();
+        let c1: Vec<String> = normalized[8..22].to_vec();
+        let c2: Vec<String> = normalized[16..29].to_vec();
+
+        assert_eq!(c0.len(), 14);
+        assert_eq!(c1.len(), 14);
+        assert_eq!(c2.len(), 13);
+
+        let stitched = stitch_chunks(&[c0, c1, c2]);
+
+        assert_eq!(stitched.len(), 29, "stitched length matches original");
+        assert_eq!(stitched, normalized, "stitched content matches original");
+    }
 }
