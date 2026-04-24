@@ -152,3 +152,60 @@ fn corpus_produces_zero_skipped_chars() {
         "event count mismatch — skipped a char or keymap/warmup changed?"
     );
 }
+
+#[test]
+fn warmup_prepends_exactly_one_shift_pair_and_no_other_difference() {
+    // Q3 invariant: `warmup_shift: true` prepends exactly one
+    // (KEYCODE_SHIFT, down)/(up) pair to the keystroke sequence and
+    // changes nothing else. Removing the warmup (or adding/shifting
+    // events around it) would break this structural relationship.
+    //
+    // Covers rules/testing.md invariant #2 at integration scale; the
+    // sender-module unit tests already cover the single-char cases.
+    let corpus = fs::read_to_string(corpus_path()).expect("read corpus");
+
+    let run = |warmup: bool| -> Vec<(u16, bool)> {
+        let cfg = SendCfg {
+            event_pause_ms: 0,
+            char_pause_ms: 0,
+            jitter_ms: 0,
+            mod_hold_ms: 0,
+            warmup_shift: warmup,
+        };
+        let rec = Recording::default();
+        run_send(&rec, &corpus, &cfg).expect("run_send");
+        let events = rec.events.borrow().clone();
+        events
+    };
+
+    let with_warmup = run(true);
+    let without = run(false);
+
+    // Left shift keycode — matches typer_core::keymap::KEYCODE_SHIFT.
+    // Not re-exported from the library crate root; duplicated here
+    // rather than pulled in just for this assertion.
+    const KEYCODE_SHIFT: u16 = 56;
+
+    assert_eq!(
+        with_warmup.len(),
+        without.len() + 2,
+        "warmup should add exactly 2 events; got {} with vs {} without",
+        with_warmup.len(),
+        without.len()
+    );
+    assert_eq!(
+        with_warmup[0],
+        (KEYCODE_SHIFT, true),
+        "first event with warmup must be shift-down"
+    );
+    assert_eq!(
+        with_warmup[1],
+        (KEYCODE_SHIFT, false),
+        "second event with warmup must be shift-up"
+    );
+    assert_eq!(
+        &with_warmup[2..],
+        without.as_slice(),
+        "rest of the sequence must be identical — warmup must not perturb anything else"
+    );
+}
