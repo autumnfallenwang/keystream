@@ -140,4 +140,91 @@ mod tests {
         assert_eq!(d, 1);
         assert_eq!(n, 3);
     }
+
+    /// Regression test against the real PoC stress capture. Pins the
+    /// specific alignment output for the committed `stress1_ocr.json`
+    /// fixture so future changes to `align_lines`, `lines_similar`, or
+    /// `fold_char` can't silently alter the sent-vs-seen shape.
+    ///
+    /// Covers `rules/testing.md` invariant #4: LCS alignment handles
+    /// drops without cascading into every subsequent line looking like
+    /// a mismatch.
+    #[test]
+    fn align_lines_against_stress1_ocr_isolates_drops() {
+        let corpus = include_str!("../../docs/poc/samples/code_corpus.txt");
+        let ocr_json = include_str!("../../docs/poc/results/stress1_ocr.json");
+
+        // Minimal local shape so this test doesn't depend on ocr::OcrResponse.
+        #[derive(serde::Deserialize)]
+        struct Ocr {
+            lines: Vec<OcrLine>,
+        }
+        #[derive(serde::Deserialize)]
+        struct OcrLine {
+            text: String,
+        }
+
+        let ocr: Ocr = serde_json::from_str(ocr_json).expect("parse stress1_ocr.json");
+
+        // Same normalization compute_diff uses: strip leading whitespace
+        // per line and drop blank lines. OCR eats indentation and
+        // blanks deterministically; without this normalization the
+        // alignment is noisier.
+        let norm = |s: &str| -> Vec<String> {
+            s.lines()
+                .map(|l| l.trim_start().to_string())
+                .filter(|l| !l.is_empty())
+                .collect()
+        };
+        let sent_lines: Vec<String> = norm(corpus);
+        let seen_lines: Vec<String> = ocr
+            .lines
+            .into_iter()
+            .map(|l| l.text.trim_start().to_string())
+            .filter(|s| !s.is_empty())
+            .collect();
+
+        assert_eq!(sent_lines.len(), 29, "normalized sent line count");
+        assert_eq!(seen_lines.len(), 30, "normalized seen line count");
+
+        let pairs = align_lines(&sent_lines, &seen_lines);
+
+        let matched_count = pairs
+            .iter()
+            .filter(|(s, g)| s.is_some() && g.is_some())
+            .count();
+        let drops: Vec<usize> = pairs
+            .iter()
+            .filter_map(|(s, g)| match (s, g) {
+                (Some(s), None) => Some(*s),
+                _ => None,
+            })
+            .collect();
+        let extras: Vec<usize> = pairs
+            .iter()
+            .filter_map(|(s, g)| match (s, g) {
+                (None, Some(g)) => Some(*g),
+                _ => None,
+            })
+            .collect();
+
+        assert_eq!(pairs.len(), 34, "total aligned pairs");
+        assert_eq!(matched_count, 25, "matched pairs");
+        assert_eq!(drops, vec![10, 22, 26, 27], "drop sent positions");
+        assert_eq!(extras, vec![10, 22, 26, 27, 28], "extra seen positions");
+
+        // Invariant #4: alignment doesn't cascade. Every matched pair's
+        // sent and seen indices stay within 3 of each other. A
+        // positional-zip (cascade) regression would have this offset
+        // grow monotonically after the first drop.
+        for (s, g) in &pairs {
+            if let (Some(s), Some(g)) = (s, g) {
+                let drift = s.abs_diff(*g);
+                assert!(
+                    drift <= 3,
+                    "matched pair (sent={s}, seen={g}) drifted by {drift} — cascade regression?"
+                );
+            }
+        }
+    }
 }
