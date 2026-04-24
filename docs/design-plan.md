@@ -16,19 +16,36 @@ Pure business logic (diff rendering, config serialization) lives in `src/lib/cor
 
 ## Data flow (typical send-and-verify run)
 
+v1 sends in **5-source-line chunks** with **per-chunk OCR verify** (see Q7, Q9). Each chunk is typed, the calibrated region is captured, OCR'd, diffed against the chunk we just sent. On pass we move to the next chunk; on fail we **pause and surface to the user** (no auto-rollback in v1 — see Q10).
+
 ```
-frontend: user picks file → invoke("load_file", path) → string
-frontend: user clicks Send (verify=on) → invoke("run_send_verify", {text, cfg})
- ├─ src-tauri command handler validates cfg, calls typer-core::run_send
- │   ├─ cliclick-style keystrokes via CGEvent
- │   └─ emits "typer-progress" events (char N/M) back to frontend
- ├─ typer-core::scroll_verify
- │   ├─ PageUp x40 → screencapture region → ocr_helper sidecar → JSON
- │   ├─ PageDown loop, capture per viewport, stitch by tail/head overlap
- │   └─ returns stitched text
- ├─ typer-core::diff (LCS line alignment + char fold)
- └─ returns DiffStats to frontend → rendered as sent-vs-seen panel
+frontend: user pastes text or picks file → text loaded
+frontend: pre-task gates evaluated:
+  ├─ text loaded?
+  ├─ all lines ≤ MAX_LINE_CHARS?  (Q8)
+  ├─ region calibrated?
+  └─ permissions granted?
+       Send button enabled only when all four pass.
+
+frontend: user clicks Send → invoke("run_send_verify", {text})
+ ├─ countdown N seconds (user clicks into target VM during this window)
+ ├─ shift warmup (Q3)
+ └─ for each chunk of CHUNK_SIZE_LINES source lines:
+     ├─ emit "chunk-start" {index, lines}
+     ├─ typer-core::send_chunk → cliclick-style keystrokes via CGEvent
+     ├─ sleep settle_ms
+     ├─ typer-core::verify_visible
+     │   ├─ screencapture calibrated region → ocr_helper sidecar → JSON
+     │   └─ extract last N non-empty OCR lines
+     ├─ typer-core::diff (LCS + char fold) → DiffStats
+     ├─ if diff.char_diffs == 0 (Q9):
+     │     emit "chunk-pass" {index} → frontend marks chunk green; continue
+     └─ else:
+           emit "chunk-fail" {index, diff} → frontend pauses, shows fail
+           user chooses: Skip / Stop / (v2: Retry)
 ```
+
+The PoC's full-file scroll-verify (`run_scroll_verify`) is retained in `typer-core` for a "verify-everything-at-end" mode (debug/regression use), but the v1 UI drives the per-chunk loop above.
 
 ## Locked Decisions
 
@@ -82,14 +99,67 @@ Decisions below are load-bearing. New `dev-task` / `walkthrough` work must not c
 
 **Source:** [`docs/poc/typer/src/main.rs`](poc/typer/src/main.rs) `align_lines()` + `print_diff()`. Corpus: [`docs/poc/samples/code_corpus.txt`](poc/samples/code_corpus.txt).
 
+### Q7 — Send in 5-source-line chunks, not whole-file in one shot
+
+**Decision:** v1 sends text in fixed chunks of `CHUNK_SIZE_LINES = 5` source lines (split by `\n`). Each chunk is typed, then verified before the next chunk starts. The PoC's whole-file send is retained in `typer-core` but is not the UI's primary mode.
+
+**Why:** The user-facing model is "type a piece, prove it landed, type the next piece." This:
+- Localises failure (a bad chunk doesn't poison everything after it).
+- Makes the text panel a live progress indicator (per-chunk highlight: untouched / in-progress / pass / fail).
+- Keeps verify cycles bounded (a failed chunk is 5 lines to deal with, not 200).
+
+5 was picked as a balance between OCR overhead (more chunks = more OCR cycles) and retry granularity (smaller chunks = smaller blast radius). Configurable later when settings exist (see Q11).
+
+**Why source line, not visual line or fixed char budget:** Source lines (split on `\n`) match how the user reads code. Visual lines depend on window width. Fixed char budget breaks mid-statement. Source-line chunking pairs with Q8 (line-length pre-check) — once we cap line length, "5 lines" has predictable visual height and OCR cost.
+
+**Source:** New in v1. PoC sent the whole file in one shot.
+
+### Q8 — Pre-send line-length check, blocks Send if any line exceeds limit
+
+**Decision:** Before Send is enabled, every source line in the input is checked against `MAX_LINE_CHARS = 80`. If any line is longer, Send is disabled and the offending line numbers + char counts are surfaced to the user. The user must fix the input externally and reload.
+
+**Why:**
+- Long lines force horizontal scroll on the AVD side. Vertical scroll we control (PageUp/PageDown reach the AVD per Q5); horizontal scroll we don't have a tested mechanism for.
+- Even if horizontal scroll worked, OCR over a horizontally-scrolled viewport would only see a slice of the line, breaking verify.
+- Code (the dominant input per the v1 user) rarely has lines >80 chars. When it does, the user controls the source and can wrap.
+
+**v1 behavior:** block + report. **v2:** offer auto-wrap as an opt-in option.
+
+**Source:** New in v1.
+
+### Q9 — Per-chunk pass criterion: 0 char diffs after fold
+
+**Decision:** A chunk passes verify iff `DiffStats.char_diffs == 0` after the OCR fold table is applied. Not "≥99% accuracy" — strict zero.
+
+**Why:** The fold table (`fold_char` in PoC, locked decision Q4) exists exactly to absorb the deterministic OCR misreads (`<` → `‹`, `0` → `O`, case flips on certain letters, etc.). Anything the fold table doesn't catch is either:
+- A real typing error (drop, double, wrong char) — must surface, not hide.
+- An OCR misread we haven't characterised yet — surface so we can extend the fold table.
+
+A percentage threshold would silently bury both. The 98.30–98.37% PoC number is a global *aggregate* across many chunks; per-chunk after fold should be 100%.
+
+**Source:** New in v1. PoC reported aggregate accuracy, not per-chunk pass/fail.
+
+### Q10 — On chunk fail, pause and surface; no auto-rollback in v1
+
+**Decision:** When a chunk fails verify, v1 stops the send loop, marks the chunk fail in the UI, shows the diff, and offers the user three actions: **Skip** (mark this chunk failed-and-acknowledged, continue with next chunk), **Stop** (abort the whole send), or **Retry manually** (user fixes the AVD side themselves, then clicks Continue). v1 does **not** auto-delete the failed chunk and re-type.
+
+**Why:** Auto-rollback requires a "delete the last N chars/lines we typed" primitive that the PoC does not have. Two candidate approaches were considered:
+- **Backspace × N** — slow (4s per ~400-char chunk at PoC pacing) and *itself* subject to the same RDP-hop drop/double risk that verify exists to catch. Using a fragile keystroke to recover from a fragile keystroke compounds risk.
+- **Shift+Up × CHUNK_SIZE_LINES + Backspace** — faster and bounded, but Shift+arrow combos are unproven against AVD. The PoC proved plain arrows / PageUp / PageDown reach AVD and that `Ctrl+Home` does not; Shift+arrow is in between and needs its own scroll-test-style probe.
+
+Building auto-rollback before we've proven a reliable delete primitive would build the wrong thing. v1 ships with manual recovery; v2 adds auto-rollback once the Phase 2.5 PoC (see Build phases) lands a tested delete strategy.
+
+**Source:** New in v1. PoC has only `clear_editor` (Ctrl+A + Backspace), which wipes the entire editor — used between full back-to-back stress runs, not for per-chunk recovery.
+
 ## Build phases
 
 High-level ordering for the `dev-task` skill. See `docs/progress.md` for the live task list with statuses.
 
 - **Phase 0 — PoC complete (done before this repo existed).** `docs/poc/` holds the verified lineage: the Python predecessor that surfaced the unicode-injection problem (`python-predecessor/`), the Rust CLI that solved it (`typer/`), Swift OCR sidecars (`ocr_helper/`), the 916-char sample corpus (`samples/code_corpus.txt`), and the one stress-run capture that first hit 0 typing errors (`results/stress1_*`). See `docs/poc/README.md` for the rebuild instructions.
-- **Phase 1 — Scaffold.** Tauri + Next.js project, biome + vitest, rules docs, .claude workflow. ← we are here
-- **Phase 2 — Split typer-core.** Extract send / verify / scroll / LCS / stitch / fold from the PoC CLI into a reusable library crate. Keep a thin CLI shim.
-- **Phase 3 — Wire Tauri commands.** `calibrate`, `send`, `verify`, `scroll_verify`, `get_region`, `clear_region`. Progress streamed via events.
-- **Phase 4 — Minimal UI.** File picker, calibrate button, send + verify buttons, live progress, diff view. No design polish.
-- **Phase 5 — UI polish.** Tailwind + shadcn components, keyboard shortcuts, better visual diff, help tooltips for permissions.
-- **Phase 6 — Stretch.** Multi-profile config (different target windows), retry-on-mismatch, cross-platform scaffolding.
+- **Phase 1 — Scaffold.** Tauri + Next.js project, biome + vitest, rules docs, .claude workflow. ✅ done.
+- **Phase 2 — Split typer-core.** Extract send / verify / scroll / LCS / stitch / fold from the PoC CLI into a reusable library crate. Keep a thin CLI shim. **Add a `send_chunk` + `verify_visible` pair (new for Q7/Q9) alongside the PoC's whole-file `run_send` + `run_scroll_verify`.** All numeric defaults live in named `const`s in one config module so v2 settings extraction is mechanical.
+- **Phase 2.5 — Delete-primitive PoC.** Standalone CLI probe (mirrors PoC `scroll-test`) that fires several candidate "delete the last N lines" strategies against AVD and reports which ones reach: (a) Backspace × N, (b) Ctrl+Z, (c) Shift+Up × N + Backspace, (d) Shift+Up × N + Delete-key. Output feeds Q11 (delete strategy) and unblocks v2 auto-retry.
+- **Phase 3 — Wire Tauri commands.** `calibrate`, `send_with_chunked_verify` (drives Q7+Q9 loop), `verify_visible`, `scroll_verify` (full-file debug mode), `get_region`, `clear_region`, `check_lines` (Q8 pre-check). Progress streamed via events: `chunk-start`, `chunk-pass`, `chunk-fail`, `send-complete`. Argument validation per `rules/security.md`.
+- **Phase 4 — v1 UI.** Single-window layout. Immutable text panel showing the full input with per-chunk highlight (untouched / in-progress / pass / fail). Pre-task gate strip (text loaded / line check / region calibrated / permissions). Big countdown overlay during pre-send. Stop button + Esc hotkey. Collapsible diff view for failed chunks. On fail: pause + surface Skip / Stop / Retry-manually controls (Q10).
+- **Phase 5 — UI polish.** Distinct visual identity (frontend-design pass), keyboard shortcuts, improved diff visualisation, permission tooltips, settings surface (CHUNK_SIZE_LINES, MAX_LINE_CHARS, COUNTDOWN_SECS).
+- **Phase 6 — Stretch.** Auto-rollback retry (v2, depends on Phase 2.5 outcome), auto-wrap long lines (v2 of Q8), multi-profile config (different target windows), cross-platform scaffolding.

@@ -26,16 +26,22 @@ SANDBOX=$(git diff --cached --name-only 2>/dev/null | grep -E '^sandbox/')
 # - src-tauri/icons/        (app icons)
 # - public/                 (Next.js public assets)
 # Any PNG/JPG or JSON captured elsewhere is suspicious and should be reviewed.
-CAPTURES=$(git diff --cached --name-only --diff-filter=A 2>/dev/null | grep -iE '\.(png|jpg|jpeg|json)$' | while read -r f; do
+CAPTURED_FILES=$(git diff --cached --name-only --diff-filter=A 2>/dev/null | grep -iE '\.(png|jpg|jpeg|json)$')
+CAPTURES=""
+while IFS= read -r f; do
+  [ -z "$f" ] && continue
   case "$f" in
-    docs/poc/results/*) ;;
-    tests/fixtures/*) ;;
-    src-tauri/icons/*) ;;
-    public/*) ;;
-    *.json) ;;
-    *) echo "$f" ;;
+    docs/poc/results/*) : ;;
+    tests/fixtures/*) : ;;
+    src-tauri/icons/*) : ;;
+    public/*) : ;;
+    *.json) : ;;
+    *) CAPTURES="${CAPTURES}${f}
+" ;;
   esac
-done)
+done <<EOF
+$CAPTURED_FILES
+EOF
 
 FOUND="${SECRETS}${PATTERNS}${ENVFILES}${SANDBOX}${CAPTURES}"
 

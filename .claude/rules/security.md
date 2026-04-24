@@ -11,6 +11,7 @@
 - Treat whatever is on the user's screen during a send-and-verify cycle as potentially sensitive. The user may be piping private text into an internal VM.
 - Do not upload captured screenshots, OCR output, or transcripts of sent text to any external service (LLM APIs, crash reporters, analytics).
 - Do not log the **content** of what was typed at `INFO` level or above. Log lengths, line counts, timings, error classes — not characters. Logging "sent 1832 chars, 0 skipped" is fine; logging the actual text is a finding.
+- **Persistence is not logging.** Saving the user's last-loaded text to the app data dir (for convenience across app restarts) is OK — it's user-initiated, local-only, under the user's filesystem permissions, and reversible via a Clear button. Logging that same content into a log file is not OK. The difference: persistence is a product feature the user controls; logs travel with bug reports.
 
 ## Sidecar binary provenance
 

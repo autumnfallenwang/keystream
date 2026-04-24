@@ -39,6 +39,7 @@ Tauri 2 (Rust shell, native OS webview) | Next.js (App Router, static export) + 
 - **macOS only (today).** CGEvent, Apple Vision, and AppKit are Apple-exclusive. Cross-platform ports are future work, not v1.
 - **No server, no cloud, no accounts.** Everything local.
 - **Unsigned binaries in v1.** First-launch Gatekeeper warnings are documented, not avoided.
+- **Chunked send-and-verify (v1 UX model).** Text is sent in 5-source-line chunks; each chunk is OCR-verified before the next is typed. Pass = 0 char diffs after fold. On fail, v1 pauses and asks the user to Skip / Stop / fix-then-Continue — no auto-rollback (auto-delete primitive deferred until Phase 2.5 PoC). Pre-send blocks if any line exceeds 80 chars. See `docs/design-plan.md` Q7–Q10.
 
 ## Security & coding rules
 
