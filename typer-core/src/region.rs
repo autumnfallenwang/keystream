@@ -4,10 +4,11 @@
 //! `path::app_data_dir`, tests pass a tempdir).
 
 use crate::error::{Result, TyperError};
+use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Region {
     pub x: i32,
     pub y: i32,

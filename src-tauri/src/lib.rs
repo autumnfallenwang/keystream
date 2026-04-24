@@ -1,3 +1,4 @@
+mod calibrate;
 mod json_log;
 mod log_commands;
 
@@ -38,11 +39,13 @@ pub fn run() {
     log::info!("build={}", if is_debug { "debug" } else { "release" });
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_shell::init())
         .invoke_handler(tauri::generate_handler![
             log_commands::log_info,
             log_commands::log_warn,
             log_commands::log_error,
             log_commands::open_log_dir,
+            calibrate::calibrate,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

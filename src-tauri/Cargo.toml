@@ -25,4 +25,5 @@ dirs = "5"
 open = "5"
 tauri = { version = "2.10.3" }
 tauri-plugin-log = "2"
+tauri-plugin-shell = "2"
 typer-core = { path = "../typer-core" }
