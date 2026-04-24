@@ -1,5 +1,6 @@
 mod calibrate;
 mod json_log;
+mod lint;
 mod log_commands;
 
 use std::path::PathBuf;
@@ -48,6 +49,7 @@ pub fn run() {
             calibrate::calibrate,
             calibrate::get_region,
             calibrate::clear_region,
+            lint::check_lines,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -18,6 +18,7 @@ pub mod error;
 pub mod event_source;
 pub mod fold;
 pub mod keymap;
+pub mod lint;
 pub mod ocr;
 pub mod region;
 pub mod scroll;
@@ -34,6 +35,7 @@ pub use config::{
 pub use diff::{DiffKind, DiffLine, DiffStats};
 pub use error::{Result, TyperError};
 pub use event_source::{EventSource, RealEventSource};
+pub use lint::{check_lines, CheckLinesResult, OffendingLine};
 pub use region::Region;
 pub use scroll::{run_scroll_verify, ScrollCfg};
 pub use sender::{
