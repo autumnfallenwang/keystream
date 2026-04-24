@@ -34,6 +34,10 @@ src-tauri/target/
 src-tauri/gen/schemas/
 src-tauri/WixTools/
 
+# PoC reference crate intentionally has no committed lockfile (see its
+# README). Ignore the one cargo generates during local sanity builds.
+docs/poc/typer/Cargo.lock
+
 # ---------- Tauri bundler output ----------
 src-tauri/target/release/bundle/
 
