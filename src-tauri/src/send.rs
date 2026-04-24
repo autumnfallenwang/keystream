@@ -8,17 +8,16 @@ use std::sync::atomic::Ordering;
 use std::time::Duration;
 use tauri::ipc::Channel;
 use tauri::{AppHandle, State};
-use tauri_plugin_shell::ShellExt;
 use tokio::sync::mpsc;
 use typer_core::config::CHUNK_VERIFY_SETTLE_MS;
-use typer_core::region::{load_region, Region};
+use typer_core::region::load_region;
 use typer_core::{
-    chunk_text, diff_against_tail, send_chunk, warmup_shift, DiffLine, DiffStats, RealEventSource,
-    SendCfg,
+    chunk_text, send_chunk, warmup_shift, DiffLine, DiffStats, RealEventSource, SendCfg,
 };
 
 use crate::calibrate::region_path;
 use crate::send_state::{ContinueAction, SendState};
+use crate::verify::capture_and_diff;
 
 /// Events streamed to the frontend during a send. Shape matches the
 /// Tauri 2 Channel pattern: a discriminated union with `event` / `data`.
@@ -227,45 +226,7 @@ pub async fn continue_after_fail(
     Ok(())
 }
 
-/// OCR + diff pipeline. Splits what `typer_core::verify_visible` does
-/// internally so we can route the sidecar spawn through
-/// `tauri-plugin-shell` (dev/prod path resolution, code signing) while
-/// keeping `screencapture` in pure Rust.
-///
-/// Task 27 will promote this to a `#[tauri::command]` wrapper.
-async fn capture_and_diff(
-    app: &AppHandle,
-    region: &Region,
-    expected: &[&str],
-) -> Result<(DiffStats, Vec<DiffLine>), String> {
-    if expected.is_empty() {
-        return Ok((DiffStats::default(), Vec::new()));
-    }
-
-    let png =
-        typer_core::ocr::capture_region_png(region).map_err(|e| format!("screencapture: {e}"))?;
-
-    let png_str = png.to_str().ok_or("non-utf8 PNG path")?;
-    let sidecar = app
-        .shell()
-        .sidecar("ocr_helper")
-        .map_err(|e| format!("sidecar init: {e}"))?
-        .arg(png_str);
-    let output = sidecar
-        .output()
-        .await
-        .map_err(|e| format!("sidecar spawn: {e}"))?;
-
-    if !output.status.success() {
-        return Err(format!("ocr_helper failed: {:?}", output.status));
-    }
-
-    let json = String::from_utf8_lossy(&output.stdout);
-    let seen_lines =
-        typer_core::ocr::parse_ocr_json(&json).map_err(|e| format!("parse OCR: {e}"))?;
-
-    Ok(diff_against_tail(&seen_lines, expected))
-}
+// capture_and_diff moved to crate::verify in task 27. Imported above.
 
 #[cfg(test)]
 mod tests {

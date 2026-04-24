@@ -4,6 +4,7 @@ mod lint;
 mod log_commands;
 mod send;
 mod send_state;
+mod verify;
 
 use std::path::PathBuf;
 
@@ -59,6 +60,8 @@ pub fn run() {
             lint::check_lines,
             send::send_with_chunked_verify,
             send::continue_after_fail,
+            verify::verify_visible,
+            verify::scroll_verify,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
