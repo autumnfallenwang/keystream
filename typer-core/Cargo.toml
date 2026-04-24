@@ -1,0 +1,17 @@
+[package]
+name = "typer-core"
+description = "Keystroke sender and OCR verify loop for Keystream. Platform: macOS."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[lib]
+name = "typer_core"
+
+[dependencies]
+log = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }

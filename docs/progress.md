@@ -16,7 +16,7 @@ Live task tracker. Update via `/update-progress` after finishing work. The "why"
 
 | # | Task | Status |
 |---|---|---|
-| 6 | Convert repo to a Cargo workspace with `typer-core/` and `src-tauri/` as members. | not started |
+| 6 | Convert repo to a Cargo workspace with `typer-core/` and `src-tauri/` as members. | done |
 | 7 | Extract sender / verify / scroll / LCS / fold / stitch from [`docs/poc/typer/src/main.rs`](poc/typer/src/main.rs) into `typer-core/` crate. Keep PoC functions (`run_send`, `run_scroll_verify`) intact for whole-file mode. Replace `process::exit` / `eprintln!` with `Result<_, Error>` returns (thiserror) and `log::*` calls — libraries can't exit. | not started |
 | 8 | Add `send_chunk(lines: &[&str])` + `verify_visible(expected: &[&str]) -> DiffStats` (new pair for Q7/Q9 chunked loop). Reuses `send_char`, `capture_ocr_lines`, `print_diff` from extracted code. | not started |
 | 9 | Centralise all numeric defaults in `typer-core/src/config.rs` as named `const`s (CHUNK_SIZE_LINES=5, MAX_LINE_CHARS=80, COUNTDOWN_SECS=3, EVENT_PAUSE_MS=10, MOD_HOLD_MS=10, SCROLL_SETTLE_MS=250, VERIFY_PASS_THRESHOLD=0). | not started |
@@ -105,7 +105,8 @@ Every regression invariant from `rules/testing.md` has an explicit task: sender 
 - Universal infra ported from teacherease: JSON file logger writing to app data dir, 4 log Tauri commands (`log_info/warn/error/open_log_dir`), `src/lib/ipc.ts` facade with `listenTauriEvent` + log wrappers, `tsconfig` with `noUncheckedIndexedAccess`, vitest config, `pnpm bump` version script, GitHub Actions CI (TS + Rust).
 - `pnpm check` (lint + typecheck + test) and `cargo clippy -- -D warnings` + `cargo fmt --check` + `cargo test` all pass.
 - v1 UX shape locked. Decisions Q7–Q10 in `design-plan.md` capture chunk size (5 source lines), pre-send line-length check (≤80), per-chunk verify (0 char diffs after fold), and the v1 "pause-and-surface, no auto-rollback" failure model.
+- Cargo workspace in place (workspace root `Cargo.toml` + `src-tauri` + empty `typer-core`). Shared deps (`serde`, `serde_json`, `log`, `thiserror`) declared in `[workspace.dependencies]`. Single `Cargo.lock` at workspace root. `cargo fmt --check` + `cargo clippy --workspace --all-targets -- -D warnings` + `cargo test --workspace` all pass.
 
 ## What's Next
 
-Phase 2 — task 6: convert the repo to a Cargo workspace with `typer-core/` and `src-tauri/` as members. Task 7 then extracts the PoC CLI into `typer-core/`.
+Phase 2 — task 7: extract sender / verify / scroll / LCS / fold / stitch from [`docs/poc/typer/src/main.rs`](poc/typer/src/main.rs) into the now-empty `typer-core/` crate. Replace PoC's `process::exit` / `eprintln!` with `Result<_, thiserror::Error>` returns and `log::*` calls.
