@@ -12,6 +12,7 @@
 //! - Q6: LCS line alignment for sent-vs-seen diff
 
 pub mod align;
+pub mod config;
 pub mod diff;
 pub mod error;
 pub mod event_source;
@@ -24,12 +25,14 @@ pub mod sender;
 pub mod stitch;
 pub mod verify;
 
+pub use config::{CHUNK_SIZE_LINES, CHUNK_VERIFY_SETTLE_MS};
 pub use diff::{DiffKind, DiffLine, DiffStats};
 pub use error::{Result, TyperError};
 pub use event_source::{EventSource, RealEventSource};
 pub use region::Region;
 pub use scroll::{run_scroll_verify, ScrollCfg};
 pub use sender::{
-    clear_editor, run_send, send_char, send_ctrl_combo, tap_key, warmup_shift, SendCfg,
+    chunk_text, clear_editor, run_send, send_char, send_chunk, send_ctrl_combo, tap_key,
+    warmup_shift, SendCfg,
 };
-pub use verify::run_verify_diff;
+pub use verify::{run_verify_diff, verify_visible};

@@ -45,6 +45,18 @@ impl DiffStats {
             100.0 * (self.total_chars - self.char_diffs) as f64 / self.total_chars as f64
         }
     }
+
+    /// Per Q9: a chunk passes iff there are 0 char differences after
+    /// the OCR fold table has been applied. This is strict on typing
+    /// errors (any real mismatch fails the chunk) and tolerant of OCR
+    /// drops/extras — Q6/Q4 already absorb those via LCS alignment and
+    /// the fold table. If a typing error coincides with an OCR drop
+    /// of the same line (both produce `OcrDrop`, no chars to compare),
+    /// this returns `true` spuriously; v1 accepts that edge case, v2
+    /// can add a stricter mode if it turns out to matter.
+    pub fn passes_q9(&self) -> bool {
+        self.char_diffs == 0
+    }
 }
 
 /// Compute diff stats + per-line diff records. Normalises both sides by
@@ -194,5 +206,37 @@ mod tests {
     fn compute_diff_empty_returns_100_percent() {
         let (stats, _) = compute_diff("", "");
         assert!((stats.accuracy_pct() - 100.0).abs() < 0.001);
+    }
+
+    #[test]
+    fn passes_q9_true_when_zero_char_diffs() {
+        let stats = DiffStats {
+            char_diffs: 0,
+            ..Default::default()
+        };
+        assert!(stats.passes_q9());
+    }
+
+    #[test]
+    fn passes_q9_false_with_one_char_diff() {
+        let stats = DiffStats {
+            char_diffs: 1,
+            ..Default::default()
+        };
+        assert!(!stats.passes_q9());
+    }
+
+    #[test]
+    fn passes_q9_true_even_with_ocr_drops_and_extras() {
+        // Q9 is strict on typing errors (char_diffs), tolerant on OCR
+        // drops/extras since the fold table and LCS alignment already
+        // handle those.
+        let stats = DiffStats {
+            char_diffs: 0,
+            dropped: 2,
+            extra: 1,
+            ..Default::default()
+        };
+        assert!(stats.passes_q9());
     }
 }

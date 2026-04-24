@@ -168,6 +168,76 @@ pub fn warmup_shift(src: &dyn EventSource, cfg: &SendCfg) -> Result<()> {
     Ok(())
 }
 
+/// Type a chunk of N source lines into the target editor. Each line is
+/// typed char-by-char (via `send_char`), followed by a newline. The
+/// final line also gets a trailing newline so the cursor ends at the
+/// start of the next logical line, ready for the next chunk.
+///
+/// Does NOT perform shift warmup. The caller (typically the Tauri
+/// orchestrator driving the chunked loop) is responsible for calling
+/// `warmup_shift` once before the first chunk (Q3) so warmup overhead
+/// is paid once per session, not once per chunk.
+///
+/// Skipped unmapped chars are logged at WARN with their hex codepoint
+/// (never the char itself — rules/security.md).
+pub fn send_chunk(src: &dyn EventSource, lines: &[&str], cfg: &SendCfg) -> Result<()> {
+    let total_chars: usize = lines.iter().map(|l| l.chars().count()).sum();
+    log::info!(
+        "send_chunk: started lines={} chars={}",
+        lines.len(),
+        total_chars
+    );
+
+    let mut rng = rand::thread_rng();
+    let mut skipped = 0u64;
+
+    for line in lines {
+        for ch in line.chars() {
+            match char_to_keycode(ch) {
+                Some((code, shift)) => {
+                    send_char(src, code, shift, cfg)?;
+                }
+                None => {
+                    log::warn!("send_chunk: skip unmapped_codepoint={:#x}", ch as u32);
+                    skipped += 1;
+                }
+            }
+            let jitter = if cfg.jitter_ms == 0 {
+                0
+            } else {
+                rng.gen_range(0..=cfg.jitter_ms)
+            };
+            if cfg.char_pause_ms + jitter > 0 {
+                thread::sleep(Duration::from_millis(cfg.char_pause_ms + jitter));
+            }
+        }
+        tap_key(src, KEYCODE_RETURN, cfg)?;
+    }
+
+    log::info!(
+        "send_chunk: complete lines={} chars={} skipped={}",
+        lines.len(),
+        total_chars,
+        skipped
+    );
+    Ok(())
+}
+
+/// Split `text` by `\n` and group into chunks of `CHUNK_SIZE_LINES`
+/// source lines. Trailing partial chunk (fewer than CHUNK_SIZE_LINES
+/// lines) is included. Empty input returns an empty vec.
+pub fn chunk_text(text: &str) -> Vec<Vec<String>> {
+    if text.is_empty() {
+        return Vec::new();
+    }
+    text.lines()
+        .map(String::from)
+        .collect::<Vec<_>>()
+        .chunks(crate::config::CHUNK_SIZE_LINES)
+        .map(<[String]>::to_vec)
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -263,5 +333,103 @@ mod tests {
         run_send(&src, "é", &fast_cfg()).unwrap();
         let events = src.events.borrow();
         assert_eq!(events.len(), 0);
+    }
+
+    // ---- task 8: send_chunk + chunk_text ----
+
+    #[test]
+    fn send_chunk_emits_chars_then_newline_per_line() {
+        // Each line's chars are posted (down/up per char), followed by a
+        // RETURN down/up. The FINAL line also gets a trailing RETURN so
+        // the cursor is at the start of the next logical line.
+        let src = RecordingEventSource::new();
+        send_chunk(&src, &["ab", "cd"], &fast_cfg()).unwrap();
+        let events = src.events.borrow();
+        // 'a' keycode 0, 'b' keycode 11, 'c' keycode 8, 'd' keycode 2
+        assert_eq!(
+            *events,
+            vec![
+                (0, true),
+                (0, false),
+                (11, true),
+                (11, false),
+                (KEYCODE_RETURN, true),
+                (KEYCODE_RETURN, false),
+                (8, true),
+                (8, false),
+                (2, true),
+                (2, false),
+                (KEYCODE_RETURN, true),
+                (KEYCODE_RETURN, false),
+            ]
+        );
+    }
+
+    #[test]
+    fn send_chunk_empty_lines_only_post_returns() {
+        let src = RecordingEventSource::new();
+        send_chunk(&src, &["", ""], &fast_cfg()).unwrap();
+        let events = src.events.borrow();
+        assert_eq!(
+            *events,
+            vec![
+                (KEYCODE_RETURN, true),
+                (KEYCODE_RETURN, false),
+                (KEYCODE_RETURN, true),
+                (KEYCODE_RETURN, false),
+            ]
+        );
+    }
+
+    #[test]
+    fn send_chunk_does_not_warmup() {
+        // Contract: send_chunk never warms up — the caller does it once
+        // before the first chunk. For "A" the first event is shift-down
+        // (part of the send_char cliclick recipe), not a standalone
+        // warmup shift-down/up pair preceding the char.
+        let src = RecordingEventSource::new();
+        send_chunk(&src, &["A"], &fast_cfg()).unwrap();
+        let events = src.events.borrow();
+        // Expected: shift-down (recipe), 'A' (code 0) down, 'A' up, shift-up, RETURN down, RETURN up
+        assert_eq!(
+            *events,
+            vec![
+                (KEYCODE_SHIFT, true),
+                (0, true),
+                (0, false),
+                (KEYCODE_SHIFT, false),
+                (KEYCODE_RETURN, true),
+                (KEYCODE_RETURN, false),
+            ]
+        );
+    }
+
+    #[test]
+    fn chunk_text_splits_into_5_line_groups() {
+        let text = (1..=12)
+            .map(|i| format!("line{i}"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        let chunks = chunk_text(&text);
+        assert_eq!(chunks.len(), 3);
+        assert_eq!(chunks[0].len(), 5);
+        assert_eq!(chunks[1].len(), 5);
+        assert_eq!(chunks[2].len(), 2);
+        assert_eq!(chunks[0][0], "line1");
+        assert_eq!(chunks[2][1], "line12");
+    }
+
+    #[test]
+    fn chunk_text_empty_returns_empty() {
+        assert!(chunk_text("").is_empty());
+    }
+
+    #[test]
+    fn chunk_text_exactly_one_chunk_boundary() {
+        // Exactly CHUNK_SIZE_LINES (5) lines = one chunk of 5, no trailing.
+        let text = "a\nb\nc\nd\ne";
+        let chunks = chunk_text(text);
+        assert_eq!(chunks.len(), 1);
+        assert_eq!(chunks[0].len(), 5);
     }
 }
