@@ -17,12 +17,12 @@ Live task tracker. Update via `/update-progress` after finishing work. The "why"
 | # | Task | Status |
 |---|---|---|
 | 6 | Convert repo to a Cargo workspace with `typer-core/` and `src-tauri/` as members. | done |
-| 7 | Extract sender / verify / scroll / LCS / fold / stitch from [`docs/poc/typer/src/main.rs`](poc/typer/src/main.rs) into `typer-core/` crate. Keep PoC functions (`run_send`, `run_scroll_verify`) intact for whole-file mode. Replace `process::exit` / `eprintln!` with `Result<_, Error>` returns (thiserror) and `log::*` calls — libraries can't exit. | not started |
+| 7 | Extract sender / verify / scroll / LCS / fold / stitch from [`docs/poc/typer/src/main.rs`](poc/typer/src/main.rs) into `typer-core/` crate. Keep PoC functions (`run_send`, `run_scroll_verify`) intact for whole-file mode. Replace `process::exit` / `eprintln!` with `Result<_, Error>` returns (thiserror) and `log::*` calls — libraries can't exit. | done |
 | 8 | Add `send_chunk(lines: &[&str])` + `verify_visible(expected: &[&str]) -> DiffStats` (new pair for Q7/Q9 chunked loop). Reuses `send_char`, `capture_ocr_lines`, `print_diff` from extracted code. | not started |
 | 9 | Centralise all numeric defaults in `typer-core/src/config.rs` as named `const`s (CHUNK_SIZE_LINES=5, MAX_LINE_CHARS=80, COUNTDOWN_SECS=3, EVENT_PAUSE_MS=10, MOD_HOLD_MS=10, SCROLL_SETTLE_MS=250, VERIFY_PASS_THRESHOLD=0). | not started |
 | 10 | Keep a thin CLI shim in `typer-core/src/bin/typer.rs` for local testing (preserves all PoC subcommands). | not started |
 | 11 | Copy Swift sidecar sources from [`docs/poc/ocr_helper/`](poc/ocr_helper/) to `src-tauri/binaries/src/` and compile binaries into `src-tauri/binaries/`. | not started |
-| 12 | Introduce an `EventSource` trait so sender logic is testable without posting real CGEvents — production impl wraps `core-graphics`, test impl records calls. Required by tasks 15–17. | not started |
+| 12 | Introduce an `EventSource` trait so sender logic is testable without posting real CGEvents — production impl wraps `core-graphics`, test impl records calls. Required by tasks 15–17. | done (pulled forward into task 7) |
 | 13 | **Unit: keymap coverage.** `char_to_keycode` returns Some for every printable ASCII char in the sample corpus. Inline `#[cfg(test)]` in `typer-core/src/keymap.rs`. | not started |
 | 14 | **Unit: fold table.** `fold_char` maps each documented confusion class (`` ` `` ↔ `'`, `<` ↔ `‹`, etc.) to a single canonical char. One assertion per class. | not started |
 | 15 | **Unit: LCS alignment.** Given `sent_lines` and `seen_lines` derived from [`stress1_ocr.json`](poc/results/stress1_ocr.json), `align_lines` returns the expected aligned pairs with correct `OCR_DROP`/`OCR_XTRA` positions. Covers `rules/testing.md` invariant #4. | not started |
@@ -106,7 +106,8 @@ Every regression invariant from `rules/testing.md` has an explicit task: sender 
 - `pnpm check` (lint + typecheck + test) and `cargo clippy -- -D warnings` + `cargo fmt --check` + `cargo test` all pass.
 - v1 UX shape locked. Decisions Q7–Q10 in `design-plan.md` capture chunk size (5 source lines), pre-send line-length check (≤80), per-chunk verify (0 char diffs after fold), and the v1 "pause-and-surface, no auto-rollback" failure model.
 - Cargo workspace in place (workspace root `Cargo.toml` + `src-tauri` + empty `typer-core`). Shared deps (`serde`, `serde_json`, `log`, `thiserror`) declared in `[workspace.dependencies]`. Single `Cargo.lock` at workspace root. `cargo fmt --check` + `cargo clippy --workspace --all-targets -- -D warnings` + `cargo test --workspace` all pass.
+- `typer-core` populated (task 7). 13 modules: `keymap`, `error`, `event_source`, `sender`, `ocr`, `fold`, `align`, `stitch`, `diff`, `scroll`, `verify`, `region`, plus `lib.rs`. Every `process::exit` / `eprintln!` / `println!` / `.expect()` from the PoC replaced with `Result<_, TyperError>` returns and `log::*` calls per conventions. `EventSource` trait (task 12 pulled forward) makes the sender testable without posting real CGEvents. 39 inline unit tests pass; sender tests pin Q2 shift recipe, Q3 warmup behavior, and newline/unmapped-char handling. PoC CLI at `docs/poc/typer/` remains intact and standalone (excluded from workspace).
 
 ## What's Next
 
-Phase 2 — task 7: extract sender / verify / scroll / LCS / fold / stitch from [`docs/poc/typer/src/main.rs`](poc/typer/src/main.rs) into the now-empty `typer-core/` crate. Replace PoC's `process::exit` / `eprintln!` with `Result<_, thiserror::Error>` returns and `log::*` calls.
+Phase 2 — task 8: add `send_chunk(lines: &[&str])` + `verify_visible(expected: &[&str]) -> DiffStats` to `typer-core/` — the new Q7/Q9 chunked-loop helpers. Task 7 ported only what existed in the PoC; task 8 adds the genuinely new functions that the Tauri `send_with_chunked_verify` command will drive.
