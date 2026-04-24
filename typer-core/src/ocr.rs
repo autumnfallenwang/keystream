@@ -6,7 +6,7 @@
 use crate::error::{Result, TyperError};
 use crate::region::Region;
 use serde::Deserialize;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 /// Typed OCR response shape. `ocr_helper` emits
@@ -22,10 +22,11 @@ struct OcrLine {
     text: String,
 }
 
-/// Capture the given region via `screencapture -x -R ...`, feed the PNG
-/// to the `ocr_helper` sidecar at `ocr_bin`, and return the extracted
-/// line texts (leading whitespace stripped, blank lines dropped).
-pub fn capture_ocr_lines(ocr_bin: &Path, region: &Region) -> Result<Vec<String>> {
+/// Capture the given region to a tmp PNG via `screencapture -x -R ...`.
+/// Returns the PNG path. Caller is responsible for reading / feeding to
+/// the OCR sidecar (used both by `capture_ocr_lines` for the CLI flow
+/// and by the Tauri command for the plugin-shell sidecar flow).
+pub fn capture_region_png(region: &Region) -> Result<PathBuf> {
     let tmp = std::env::temp_dir().join("typer_core_capture.png");
     let region_arg = format!("{},{},{},{}", region.x, region.y, region.w, region.h);
 
@@ -51,6 +52,15 @@ pub fn capture_ocr_lines(ocr_bin: &Path, region: &Region) -> Result<Vec<String>>
             status: status.code().map_or("signal".into(), |c| c.to_string()),
         });
     }
+
+    Ok(tmp)
+}
+
+/// Capture the given region via `screencapture -x -R ...`, feed the PNG
+/// to the `ocr_helper` sidecar at `ocr_bin`, and return the extracted
+/// line texts (leading whitespace stripped, blank lines dropped).
+pub fn capture_ocr_lines(ocr_bin: &Path, region: &Region) -> Result<Vec<String>> {
+    let tmp = capture_region_png(region)?;
 
     let out = Command::new(ocr_bin)
         .arg(&tmp)

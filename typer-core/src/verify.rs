@@ -49,11 +49,10 @@ pub fn verify_visible(
 /// Pure helper: given fully-OCR'd lines (already trimmed, non-empty per
 /// `capture_ocr_lines` / `parse_ocr_json`) and the expected chunk,
 /// take the last `expected.len()` seen lines and run `compute_diff`.
-/// `pub(crate)` so tests can exercise the slicing without a sidecar.
-pub(crate) fn diff_against_tail(
-    seen_lines: &[String],
-    expected: &[&str],
-) -> (DiffStats, Vec<DiffLine>) {
+/// Public so Tauri-side orchestrators (task 26) can compose OCR capture,
+/// sidecar spawn, and diff manually without going through
+/// `verify_visible`'s `std::process::Command`-based OCR path.
+pub fn diff_against_tail(seen_lines: &[String], expected: &[&str]) -> (DiffStats, Vec<DiffLine>) {
     let start = seen_lines.len().saturating_sub(expected.len());
     let tail = &seen_lines[start..];
     let sent = expected.join("\n");

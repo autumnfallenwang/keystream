@@ -42,4 +42,4 @@ pub use sender::{
     chunk_text, clear_editor, run_send, send_char, send_chunk, send_ctrl_combo, tap_key,
     warmup_shift, SendCfg,
 };
-pub use verify::{run_verify_diff, verify_visible};
+pub use verify::{diff_against_tail, run_verify_diff, verify_visible};

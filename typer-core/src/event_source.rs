@@ -24,6 +24,18 @@ impl RealEventSource {
         })?;
         Ok(Self { source, tap_loc })
     }
+
+    /// Convenience constructor for the session default:
+    /// `CombinedSessionState` with `Session` tap location. Matches the
+    /// Q2 / PoC behavior and lets callers outside `typer-core` (Tauri
+    /// commands, CLI shim) construct an event source without pulling
+    /// in `core-graphics` as a direct dep.
+    pub fn session_default() -> Result<Self> {
+        Self::new(
+            CGEventSourceStateID::CombinedSessionState,
+            CGEventTapLocation::Session,
+        )
+    }
 }
 
 impl EventSource for RealEventSource {

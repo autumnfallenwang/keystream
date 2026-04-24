@@ -2,6 +2,8 @@ mod calibrate;
 mod json_log;
 mod lint;
 mod log_commands;
+mod send;
+mod send_state;
 
 use std::path::PathBuf;
 
@@ -41,6 +43,11 @@ pub fn run() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
+        .setup(|app| {
+            use tauri::Manager;
+            app.manage(send_state::SendState::default());
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             log_commands::log_info,
             log_commands::log_warn,
@@ -50,6 +57,8 @@ pub fn run() {
             calibrate::get_region,
             calibrate::clear_region,
             lint::check_lines,
+            send::send_with_chunked_verify,
+            send::continue_after_fail,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

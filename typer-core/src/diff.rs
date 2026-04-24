@@ -3,8 +3,9 @@
 //! render however they like.
 
 use crate::align::{align_lines, count_char_diffs};
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum DiffKind {
     /// Lines aligned and identical after fold.
     Match,
@@ -16,7 +17,8 @@ pub enum DiffKind {
     OcrExtra,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct DiffLine {
     pub kind: DiffKind,
     pub index: usize,
@@ -25,7 +27,8 @@ pub struct DiffLine {
     pub char_diffs: usize,
 }
 
-#[derive(Default, Clone, Debug)]
+#[derive(Default, Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct DiffStats {
     pub aligned_lines: usize,
     pub matching_lines: usize,
