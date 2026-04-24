@@ -124,6 +124,11 @@ pub const KEYCODE_HOME: u16 = 115;
 pub const KEYCODE_END: u16 = 119;
 pub const KEYCODE_PAGE_DOWN: u16 = 121;
 pub const KEYCODE_PAGE_UP: u16 = 116;
+/// Up arrow. Carbon HIToolbox keycode. Used by the Phase 2.5 delete-test
+/// probe (Shift+Up for line selection). Marked #[allow(dead_code)] until
+/// v2 ships an auto-rollback primitive that uses it.
+#[allow(dead_code)]
+pub const KEYCODE_UP_ARROW: u16 = 126;
 
 #[cfg(test)]
 mod tests {

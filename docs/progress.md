@@ -37,8 +37,8 @@ Unblocks v2 auto-retry (Q10, currently deferred). v1 ships without auto-rollback
 
 | # | Task | Status |
 |---|---|---|
-| 20 | New CLI subcommand `typer delete-test` mirroring PoC `scroll-test` shape: types a known 5-line block, then fires each candidate delete strategy with announce-pause between attempts. User watches AVD and reports which strategies cleanly removed the block. | not started |
-| 21 | Candidates to probe: (a) Backspace × N chars, (b) Ctrl+Z once, (c) Ctrl+Z × 5, (d) Shift+Up × 5 + Backspace, (e) Shift+Up × 5 + Delete-key (keycode 117, Forward Delete). | not started |
+| 20 | New CLI subcommand `typer delete-test` mirroring PoC `scroll-test` shape: types a known 5-line block, then fires each candidate delete strategy with announce-pause between attempts. User watches AVD and reports which strategies cleanly removed the block. | done |
+| 21 | Candidates to probe: (a) Backspace × N chars, (b) Ctrl+Z once, (c) Ctrl+Z × 5, (d) Shift+Up × 5 + Backspace, (e) Shift+Up × 5 + Delete-key (keycode 117, Forward Delete). | done |
 | 22 | Document outcome in `docs/lessons.md` (which strategies reach AVD, which don't), append decision Q11 to `design-plan.md` locking the chosen strategy for v2. | not started |
 
 ## Phase 3 — Tauri commands
@@ -118,7 +118,14 @@ Every regression invariant from `rules/testing.md` has an explicit task: sender 
 - Keystroke regression fixture committed (task 17). `typer-core/tests/sender_regression.rs` runs `run_send` against `code_corpus.txt` through a local `RecordingEventSource`, serializes the recorded `(u16, bool)` sequence as `<keycode>,<down|up>` per line, and diffs against `typer-core/tests/fixtures/code_corpus_keystrokes.txt` (2182 events / ~15KB, committed). Self-generating via `KEYSTREAM_UPDATE_FIXTURES=1` when intentional changes land. Second test `corpus_produces_zero_skipped_chars` asserts the event count matches a pure formula (warmup + per-char contribution) — any skipped char breaks equality without needing to tail logs. First fixture in the project; introduces the `tests/fixtures/` directory convention. 69 tests now passing.
 - Shift warmup regression pinned (task 18). `sender_regression.rs` now has `warmup_prepends_exactly_one_shift_pair_and_no_other_difference` — runs `run_send` against the corpus twice (warmup on/off) and asserts the *structural* relationship: with-warmup sequence is exactly 2 events longer, first 2 events are shift-down/up (keycode 56), rest of the sequence is identical to the without-warmup case. Any regression that drops warmup, changes its shape, or entangles it with the rest of `run_send` fails at least one assertion. 70 tests now passing.
 - **Phase 2 complete** — chunked verify pair integration test shipped (task 19). `typer-core/tests/chunked_verify.rs` exercises `send_chunk` + the pure core of `verify_visible` (`parse_ocr_json` + tail-slice + `compute_diff`) against a synthetic 10-line code chunk. Three tests: event-count formula for `send_chunk`, pass on clean OCR, fail with `char_diffs == 1` on a one-char corruption (digit `2` → `3`, both outside fold classes). 73 total tests passing — all 14 Phase 2 tasks (6–19) done, spanning workspace conversion, PoC extraction, Q7/Q9 primitives, config centralization, CLI shim, Swift sidecars, and the full unit/integration test suite covering all 4 `rules/testing.md` invariants.
+- Phase 2.5 delete-test probe infrastructure landed (tasks 20+21). `typer delete-test` fires 5 candidate delete strategies against AVD with announce-pauses: Backspace × 30, Ctrl+Z once, Ctrl+Z × 5, Shift+Up × 5 + Backspace, Shift+Up × 5 + Forward Delete. Shift+Up combos use the Q2 cliclick recipe (plain keycodes, no flags). New keymap const `KEYCODE_UP_ARROW = 126`. CLI arg-parse test added; `do_delete_test` itself has no automated coverage (interactive, AVD-only). 74 tests passing. Operator runs the probe (live-VM); task 22 writes up the lesson + locks Q11.
 
 ## What's Next
 
-**Phase 2 complete.** Phase 2.5 next — delete-primitive PoC (tasks 20–22) to unblock v2 auto-retry (Q10 deferred). Task 20 adds a `delete-test` subcommand to the `typer` CLI that fires candidate delete strategies (Backspace × N, Ctrl+Z, Ctrl+Z × 5, Shift+Up × 5 + Backspace, Shift+Up × 5 + Forward Delete) against a live AVD with announce-pauses so the operator can watch which strategies cleanly remove a typed 5-line block. Phase 2.5 is investigative and live-VM-gated; CI stays green because it runs only when the user invokes the subcommand manually.
+Phase 2.5 — task 22 (final): run the `delete-test` probe against AVD, observe which of the 5 candidates cleanly removed the typed 5-line block, and write up the result in `docs/lessons.md` + append decision Q11 to `docs/design-plan.md` locking the chosen delete primitive for v2. Depends on operator running the live-VM probe:
+
+```
+cargo run -p typer-core --bin typer -- delete-test
+```
+
+Task 22 is dev-task step that produces no code — only documentation updates based on AVD findings.

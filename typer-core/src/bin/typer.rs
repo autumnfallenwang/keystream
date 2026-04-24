@@ -17,11 +17,12 @@ use std::process::{Command, ExitCode};
 use std::thread;
 use std::time::Duration;
 use typer_core::config::{CHUNK_VERIFY_SETTLE_MS, COUNTDOWN_SECS};
+use typer_core::keymap::{KEYCODE_DELETE, KEYCODE_FORWARD_DELETE, KEYCODE_SHIFT, KEYCODE_UP_ARROW};
 use typer_core::region::{legacy_config_path, load_region, save_region, Region};
 use typer_core::{
     chunk_text, clear_editor, run_scroll_verify, run_send, run_verify_diff, send_chunk,
-    verify_visible, warmup_shift, DiffKind, DiffLine, DiffStats, RealEventSource, Result,
-    ScrollCfg, SendCfg, TyperError,
+    send_ctrl_combo, tap_key, verify_visible, warmup_shift, DiffKind, DiffLine, DiffStats,
+    EventSource, RealEventSource, Result, ScrollCfg, SendCfg, TyperError,
 };
 
 #[derive(Parser)]
@@ -109,6 +110,19 @@ enum Cmd {
         #[arg(long, default_value_t = CHUNK_VERIFY_SETTLE_MS)]
         settle_ms: u64,
     },
+
+    /// Phase 2.5 investigative probe: fire five candidate delete
+    /// strategies with announce-pauses so the operator can watch AVD
+    /// and report which strategies cleanly remove a typed 5-line
+    /// block. Mirrors the scroll-test shape that sourced Q5. Task 22
+    /// writes up results + appends Q11 to design-plan.
+    DeleteTest {
+        #[arg(long, default_value_t = 3)]
+        countdown: u64,
+        /// Pause between candidates so the operator can observe AVD.
+        #[arg(long, default_value_t = 8000)]
+        pause_ms: u64,
+    },
 }
 
 fn main() -> ExitCode {
@@ -163,6 +177,10 @@ fn run(cli: Cli) -> Result<()> {
             countdown,
             settle_ms,
         } => do_send_chunk(&file, &ocr, countdown, settle_ms),
+        Cmd::DeleteTest {
+            countdown,
+            pause_ms,
+        } => do_delete_test(countdown, pause_ms),
     }
 }
 
@@ -448,6 +466,158 @@ fn flagged_keytap(source: &CGEventSource, code: u16, flags: CGEventFlags, tap: C
     }
 }
 
+// ---------- delete-test (Phase 2.5 probe — v2 auto-retry source) ----------
+
+/// 5-line test block. Plain ASCII, all unshifted, distinctive so the
+/// operator can see clearly whether a delete strategy removed it.
+const TEST_BLOCK: [&str; 5] = ["line1", "line2", "line3", "line4", "line5"];
+
+/// Number of editor "characters" the 5-line block occupies: 25 typed
+/// chars + 5 newlines = 30. That's the backspace count needed to undo
+/// the block if the editor counts each typed char + each RETURN as one
+/// position (true for Notepad; may differ for auto-indent IDEs).
+const TEST_BLOCK_CHAR_COUNT: u32 = 30;
+
+/// 'z' keycode from the US-ANSI keymap (see typer_core::keymap).
+const KEYCODE_Z: u16 = 6;
+
+fn do_delete_test(countdown: u64, pause_ms: u64) -> Result<()> {
+    let cfg = SendCfg::default();
+    let src = RealEventSource::new(
+        CGEventSourceStateID::CombinedSessionState,
+        CGEventTapLocation::Session,
+    )?;
+
+    println!(
+        "\n=== delete-test: probe five delete strategies ===\n\
+         Focus the AVD editor. Each candidate types a 5-line block,\n\
+         pauses, fires a delete strategy, pauses again so you can\n\
+         observe.\n"
+    );
+    do_countdown(countdown);
+    warmup_shift(&src, &cfg)?;
+
+    run_candidate(1, "Backspace x N (N=30)", &src, &cfg, pause_ms, |s, c| {
+        fire_backspace_n(s, c, TEST_BLOCK_CHAR_COUNT)
+    })?;
+    run_candidate(2, "Ctrl+Z once", &src, &cfg, pause_ms, fire_ctrl_z_once)?;
+    run_candidate(3, "Ctrl+Z x 5", &src, &cfg, pause_ms, fire_ctrl_z_five)?;
+    run_candidate(
+        4,
+        "Shift+Up x 5 + Backspace",
+        &src,
+        &cfg,
+        pause_ms,
+        fire_shift_up_backspace,
+    )?;
+    run_candidate(
+        5,
+        "Shift+Up x 5 + Forward Delete",
+        &src,
+        &cfg,
+        pause_ms,
+        fire_shift_up_forward_delete,
+    )?;
+
+    println!(
+        "\n=== done. For each candidate: did the 5-line block disappear cleanly?\n\
+             - CLEAN: AVD now empty (or back to whatever was before we typed).\n\
+             - PARTIAL: block partly removed; remnants visible.\n\
+             - NO-OP: block still there; keystroke didn't reach AVD.\n\
+         Report results so task 22 can lock the v2 delete primitive."
+    );
+    Ok(())
+}
+
+fn run_candidate<F>(
+    n: u32,
+    name: &str,
+    src: &RealEventSource,
+    cfg: &SendCfg,
+    pause_ms: u64,
+    fire: F,
+) -> Result<()>
+where
+    F: FnOnce(&RealEventSource, &SendCfg) -> Result<()>,
+{
+    println!("\n=== CANDIDATE {n}/5: {name} ===");
+    println!(">>> Make sure AVD editor is empty + focused. 8s...");
+    thread::sleep(Duration::from_millis(8000));
+
+    let refs: Vec<&str> = TEST_BLOCK.to_vec();
+    send_chunk(src, &refs, cfg)?;
+    println!(">>> Block typed. Firing '{name}' in 3s...");
+    thread::sleep(Duration::from_millis(3000));
+
+    fire(src, cfg)?;
+
+    println!(
+        ">>> '{name}' fired. Observe AVD. {}s pause before next candidate...",
+        pause_ms / 1000
+    );
+    thread::sleep(Duration::from_millis(pause_ms));
+    Ok(())
+}
+
+fn fire_backspace_n(src: &RealEventSource, cfg: &SendCfg, n: u32) -> Result<()> {
+    // KEYCODE_DELETE is backspace on Mac (keycode 51). Proven against
+    // AVD via the PoC's clear_editor (Ctrl+A + Backspace sequence).
+    for _ in 0..n {
+        tap_key(src, KEYCODE_DELETE, cfg)?;
+    }
+    Ok(())
+}
+
+fn fire_ctrl_z_once(src: &RealEventSource, cfg: &SendCfg) -> Result<()> {
+    // Ctrl+Z via the Q2 cliclick recipe (send_ctrl_combo: Ctrl down,
+    // key down/up, Ctrl up — no CGEventFlags). We know Ctrl+A reaches
+    // AVD through this recipe (clear_editor uses it); Ctrl+Z is the
+    // next-most-likely candidate.
+    send_ctrl_combo(src, KEYCODE_Z, cfg)
+}
+
+fn fire_ctrl_z_five(src: &RealEventSource, cfg: &SendCfg) -> Result<()> {
+    for _ in 0..5 {
+        fire_ctrl_z_once(src, cfg)?;
+        thread::sleep(Duration::from_millis(50));
+    }
+    Ok(())
+}
+
+fn fire_shift_up_backspace(src: &RealEventSource, cfg: &SendCfg) -> Result<()> {
+    // Q2 cliclick recipe for Shift+key: plain keycodes, no flags.
+    // Shift held across 5 Up-arrow taps extends selection upward 5
+    // lines (in Notepad and most text editors). Shift released, then
+    // Backspace deletes the selection in one shot.
+    src.post_key(KEYCODE_SHIFT, true)?;
+    thread::sleep(Duration::from_millis(cfg.mod_hold_ms));
+    for _ in 0..5 {
+        tap_key(src, KEYCODE_UP_ARROW, cfg)?;
+    }
+    thread::sleep(Duration::from_millis(cfg.mod_hold_ms));
+    src.post_key(KEYCODE_SHIFT, false)?;
+    thread::sleep(Duration::from_millis(cfg.event_pause_ms));
+    tap_key(src, KEYCODE_DELETE, cfg)?;
+    Ok(())
+}
+
+fn fire_shift_up_forward_delete(src: &RealEventSource, cfg: &SendCfg) -> Result<()> {
+    // Same as fire_shift_up_backspace but ends with Forward Delete
+    // (keycode 117) instead of Backspace. Some editors handle the two
+    // delete variants differently for selections; probing both tells
+    // us which, if either, reaches AVD reliably.
+    src.post_key(KEYCODE_SHIFT, true)?;
+    thread::sleep(Duration::from_millis(cfg.mod_hold_ms));
+    for _ in 0..5 {
+        tap_key(src, KEYCODE_UP_ARROW, cfg)?;
+    }
+    thread::sleep(Duration::from_millis(cfg.mod_hold_ms));
+    src.post_key(KEYCODE_SHIFT, false)?;
+    thread::sleep(Duration::from_millis(cfg.event_pause_ms));
+    tap_key(src, KEYCODE_FORWARD_DELETE, cfg)?;
+    Ok(())
+}
+
 // ---------- helpers ----------
 
 fn do_countdown(secs: u64) {
@@ -582,5 +752,12 @@ mod tests {
     fn cli_verify_requires_ocr() {
         assert!(Cli::try_parse_from(["typer", "verify"]).is_err());
         assert!(Cli::try_parse_from(["typer", "verify", "--ocr", "/x"]).is_ok());
+    }
+
+    #[test]
+    fn cli_delete_test_has_default_args() {
+        assert!(Cli::try_parse_from(["typer", "delete-test"]).is_ok());
+        assert!(Cli::try_parse_from(["typer", "delete-test", "--countdown", "0"]).is_ok());
+        assert!(Cli::try_parse_from(["typer", "delete-test", "--pause-ms", "5000"]).is_ok());
     }
 }
