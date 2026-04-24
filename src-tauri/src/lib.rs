@@ -46,6 +46,8 @@ pub fn run() {
             log_commands::log_error,
             log_commands::open_log_dir,
             calibrate::calibrate,
+            calibrate::get_region,
+            calibrate::clear_region,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -1,15 +1,17 @@
-//! `calibrate` Tauri command: spawn the `region_picker` Swift sidecar,
-//! parse its `"x y w h"` stdout, validate, persist to the Tauri app data
-//! dir, return the `Region` to the frontend.
+//! Region-state Tauri commands: `calibrate` (spawn the `region_picker`
+//! sidecar, save fresh region), `get_region` (read saved region; `None`
+//! if not yet calibrated), `clear_region` (idempotently delete).
 //!
-//! Part of Phase 3 (task 23). Replaces the PoC CLI's `~/.typer/config.txt`
-//! storage with Tauri's per-app data dir at
+//! Part of Phase 3 (tasks 23–24). Replaces the PoC CLI's
+//! `~/.typer/config.txt` storage with Tauri's per-app data dir at
 //! `~/Library/Application Support/dev.autumnfallenwang.keystream/region.txt`.
 
-use std::path::PathBuf;
+use std::fs;
+use std::path::{Path, PathBuf};
 use tauri::{AppHandle, Manager};
 use tauri_plugin_shell::ShellExt;
-use typer_core::region::{save_region, Region};
+use typer_core::region::{load_region, save_region, Region};
+use typer_core::TyperError;
 
 const REGION_FILE: &str = "region.txt";
 
@@ -97,6 +99,53 @@ pub async fn calibrate(app: AppHandle) -> Result<Region, String> {
     Ok(region)
 }
 
+/// Load the region from `path`. `Ok(None)` if the file doesn't exist
+/// yet (not-yet-calibrated state; a normal state, not an error).
+/// Other I/O errors and malformed content surface as `Err(String)`.
+pub(crate) fn load_region_at(path: &Path) -> Result<Option<Region>, String> {
+    match load_region(path) {
+        Ok(r) => Ok(Some(r)),
+        Err(TyperError::RegionNotFound { .. }) => Ok(None),
+        Err(e) => Err(e.to_string()),
+    }
+}
+
+/// Remove the region file at `path`. Idempotent: missing file is not
+/// an error. Other I/O failures are reported.
+pub(crate) fn clear_region_at(path: &Path) -> Result<(), String> {
+    match fs::remove_file(path) {
+        Ok(()) => Ok(()),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(e) => Err(format!("remove {}: {e}", path.display())),
+    }
+}
+
+/// Read the saved region. Returns `None` if not yet calibrated (normal
+/// state — frontend renders ✗ on the gate indicator).
+#[tauri::command]
+pub async fn get_region(app: AppHandle) -> Result<Option<Region>, String> {
+    let path = region_path(&app)?;
+    let result = load_region_at(&path);
+    match &result {
+        Ok(Some(r)) => log::info!("get_region: loaded x={} y={} w={} h={}", r.x, r.y, r.w, r.h),
+        Ok(None) => log::info!("get_region: no region saved"),
+        Err(e) => log::warn!("get_region: {e}"),
+    }
+    result
+}
+
+/// Delete the saved region, if any. Idempotent.
+#[tauri::command]
+pub async fn clear_region(app: AppHandle) -> Result<(), String> {
+    let path = region_path(&app)?;
+    let result = clear_region_at(&path);
+    match &result {
+        Ok(()) => log::info!("clear_region: cleared ({})", path.display()),
+        Err(e) => log::warn!("clear_region: {e}"),
+    }
+    result
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -150,5 +199,54 @@ mod tests {
     fn parse_rejects_negative() {
         assert!(parse_picker_stdout("-1 0 100 100").is_err());
         assert!(parse_picker_stdout("0 0 -50 100").is_err());
+    }
+
+    #[test]
+    fn load_region_at_returns_none_when_missing() {
+        let path = std::env::temp_dir().join("kstest_load_region_missing.txt");
+        let _ = std::fs::remove_file(&path);
+        assert_eq!(load_region_at(&path).unwrap(), None);
+    }
+
+    #[test]
+    fn load_region_at_returns_some_after_save() {
+        let path = std::env::temp_dir().join("kstest_load_region_roundtrip.txt");
+        let r = Region {
+            x: 1,
+            y: 2,
+            w: 3,
+            h: 4,
+        };
+        typer_core::region::save_region(&r, &path).unwrap();
+        let loaded = load_region_at(&path).unwrap();
+        assert_eq!(loaded, Some(r));
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn load_region_at_errors_on_malformed() {
+        let path = std::env::temp_dir().join("kstest_load_region_bad.txt");
+        std::fs::write(&path, "not four integers").unwrap();
+        let result = load_region_at(&path);
+        assert!(result.is_err());
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn clear_region_at_is_idempotent() {
+        let path = std::env::temp_dir().join("kstest_clear_region_missing.txt");
+        let _ = std::fs::remove_file(&path);
+        assert!(clear_region_at(&path).is_ok());
+        // Second call on a missing file must also succeed.
+        assert!(clear_region_at(&path).is_ok());
+    }
+
+    #[test]
+    fn clear_region_at_removes_existing_file() {
+        let path = std::env::temp_dir().join("kstest_clear_region_existing.txt");
+        std::fs::write(&path, "0 0 100 100\n").unwrap();
+        assert!(path.exists());
+        clear_region_at(&path).unwrap();
+        assert!(!path.exists());
     }
 }
