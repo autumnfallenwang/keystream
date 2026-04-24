@@ -39,7 +39,7 @@ Unblocks v2 auto-retry (Q10, currently deferred). v1 ships without auto-rollback
 |---|---|---|
 | 20 | New CLI subcommand `typer delete-test` mirroring PoC `scroll-test` shape: types a known 5-line block, then fires each candidate delete strategy with announce-pause between attempts. User watches AVD and reports which strategies cleanly removed the block. | done |
 | 21 | Candidates to probe: (a) Backspace × N chars, (b) Ctrl+Z once, (c) Ctrl+Z × 5, (d) Shift+Up × 5 + Backspace, (e) Shift+Up × 5 + Delete-key (keycode 117, Forward Delete). | done |
-| 22 | Document outcome in `docs/lessons.md` (which strategies reach AVD, which don't), append decision Q11 to `design-plan.md` locking the chosen strategy for v2. | not started |
+| 22 | Document outcome in `docs/lessons.md` (which strategies reach AVD, which don't), append decision Q11 to `design-plan.md` locking the chosen strategy for v2. | done |
 
 ## Phase 3 — Tauri commands
 
@@ -119,17 +119,10 @@ Every regression invariant from `rules/testing.md` has an explicit task: sender 
 - Shift warmup regression pinned (task 18). `sender_regression.rs` now has `warmup_prepends_exactly_one_shift_pair_and_no_other_difference` — runs `run_send` against the corpus twice (warmup on/off) and asserts the *structural* relationship: with-warmup sequence is exactly 2 events longer, first 2 events are shift-down/up (keycode 56), rest of the sequence is identical to the without-warmup case. Any regression that drops warmup, changes its shape, or entangles it with the rest of `run_send` fails at least one assertion. 70 tests now passing.
 - **Phase 2 complete** — chunked verify pair integration test shipped (task 19). `typer-core/tests/chunked_verify.rs` exercises `send_chunk` + the pure core of `verify_visible` (`parse_ocr_json` + tail-slice + `compute_diff`) against a synthetic 10-line code chunk. Three tests: event-count formula for `send_chunk`, pass on clean OCR, fail with `char_diffs == 1` on a one-char corruption (digit `2` → `3`, both outside fold classes). 73 total tests passing — all 14 Phase 2 tasks (6–19) done, spanning workspace conversion, PoC extraction, Q7/Q9 primitives, config centralization, CLI shim, Swift sidecars, and the full unit/integration test suite covering all 4 `rules/testing.md` invariants.
 - Phase 2.5 delete-test probe infrastructure landed (tasks 20+21). 5 subcommands, one per candidate: `delete-backspace-n` (default N=30), `delete-ctrl-z-once`, `delete-ctrl-z-five`, `delete-shift-up-backspace`, `delete-shift-up-forward-delete`. Each: countdown → warmup → send_chunk(TEST_BLOCK) → 2s settle → fire → observe. Shared orchestration in `do_delete_probe`; 5 thin wrappers + 5 `fire_*` keystroke helpers. Shift+Up combos use the Q2 cliclick recipe (plain keycodes, no flags). New keymap const `KEYCODE_UP_ARROW = 126`. Originally shipped as one combined `delete-test` subcommand (`e740870`); split into per-candidate subcommands for easier operator workflow — no multi-minute focus window, manual cleanup between runs. 79 tests passing (6 new CLI arg-parse tests replace the original 1).
+- **Phase 2.5 complete.** Operator ran all 5 delete probes against AVD + Notepad on 2026-04-24; all 5 reported CLEAN. Q11 locked in `design-plan.md`: v2 auto-rollback uses Shift+Up × N + Backspace (Q2 cliclick recipe). Rationale: minimal keystroke count bounded by line count (not char count), direct N↔lines mapping, editor-portable (Ctrl+Z's grouping is editor-specific). Lessons documented in `docs/lessons.md`. v2 library function will be `typer_core::delete_last_chunk(src, chunk_line_count, cfg)`; Tauri command gains a `retry_policy` parameter when auto-retry ships.
 
 ## What's Next
 
-Phase 2.5 — task 22 (final): run the 5 delete probes against AVD, observe which cleanly removed the typed 5-line block, and write up the result in `docs/lessons.md` + append decision Q11 to `docs/design-plan.md` locking the chosen delete primitive for v2. Operator runs each probe independently at their own pace (one subcommand per candidate, no cross-probe countdown pressure):
+**Phase 2.5 complete.** All five delete candidates reached AVD cleanly (operator-observed, 2026-04-24). Q11 locks Shift+Up × N + Backspace as v2's delete primitive; rationale in `docs/design-plan.md` Q11, full findings in `docs/lessons.md`.
 
-```
-cargo run -p typer-core --bin typer -- delete-backspace-n
-cargo run -p typer-core --bin typer -- delete-ctrl-z-once
-cargo run -p typer-core --bin typer -- delete-ctrl-z-five
-cargo run -p typer-core --bin typer -- delete-shift-up-backspace
-cargo run -p typer-core --bin typer -- delete-shift-up-forward-delete
-```
-
-Each probe: 3s countdown → click into AVD → 5-line block is typed → 2s settle → strategy fires → observe. Clean up AVD manually between runs. Report CLEAN / PARTIAL / NO-OP per probe. Task 22 produces no code — only documentation updates based on AVD findings.
+**Phase 3 next** — Tauri commands (tasks 23–31). First up is task 23: `calibrate` command that spawns the `region_picker` sidecar, validates the returned region, and persists it to the Tauri app data dir. This is where `typer-core` starts being consumed by `src-tauri` through `#[tauri::command]` handlers; task 23 also wires `externalBin` in `tauri.conf.json` to include the sidecars committed in task 11.

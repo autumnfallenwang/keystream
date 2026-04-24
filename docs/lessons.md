@@ -37,3 +37,17 @@ OCR deterministically drops certain lines (blanks, lone `}`, lone `;`). Position
 ### 2026-04-22 · OCR helper output must be robust JSON
 
 Parse OCR output with `serde_json::from_str` into a typed shape, handle errors, don't `unwrap`. The helper is ours today but the parser shouldn't panic if it's ever swapped for Tesseract or a remote service. Reference output shape: [`poc/results/stress1_ocr.json`](poc/results/stress1_ocr.json).
+
+## 2026-04 · Delete-primitive lessons (Phase 2.5)
+
+### 2026-04-24 · All five delete candidates reach AVD; Shift+Up × N + Backspace is the v2 pick
+
+Phase 2.5's probe (`typer delete-backspace-n`, `delete-ctrl-z-once`, `delete-ctrl-z-five`, `delete-shift-up-backspace`, `delete-shift-up-forward-delete`) against AVD + Notepad: **all five reported CLEAN** — every candidate successfully removed a typed 5-line block. The open question going into Phase 2.5 was whether Shift+arrow combos would reach AVD via the Q2 cliclick recipe (plain keycodes, no `CGEventFlags`); the answer is **yes**. Q11 locks Shift+Up × N + Backspace as v2's delete primitive: minimal keystroke count, directly maps "N" to "lines," editor-portable. See [design-plan Q11](design-plan.md#q11--v2-auto-rollback-uses-shiftup-n--backspace).
+
+### 2026-04-24 · Ctrl+Z works but is editor-semantics-dependent
+
+Both `Ctrl+Z once` and `Ctrl+Z × 5` cleanly removed the test block in AVD + Notepad. But Ctrl+Z's *grouping* (what counts as one undo step) varies by editor — Notepad groups per-keystroke, IDEs often group per-word or per-burst, some editors group per-session. Over-undo is silent: one too many Ctrl+Z's deletes content the user typed *before* us, and we'd have no way to detect it without a separate verify pass. Not the right primitive for cross-editor auto-rollback. Kept as a historical alternative in case Shift+Up ever fails against a future RDP client.
+
+### 2026-04-24 · A `#` flash during Ctrl+Z × 5 is harmless; noting for future readers
+
+During the `delete-ctrl-z-five` probe the operator observed a brief `#` character flash in the editor before disappearing. Most likely cause: the editor's undo implementation momentarily re-renders a character during the rapid-fire Ctrl+Z sequence (undo replays the typed chars in reverse, and at ~50ms between presses the render pipeline can show a transient glyph). Not caused by our keystroke stream; not seen in the other four probes. Documented here so a future observer doesn't mistake it for residue.

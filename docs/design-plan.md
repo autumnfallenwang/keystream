@@ -151,6 +151,30 @@ Building auto-rollback before we've proven a reliable delete primitive would bui
 
 **Source:** New in v1. PoC has only `clear_editor` (Ctrl+A + Backspace), which wipes the entire editor — used between full back-to-back stress runs, not for per-chunk recovery.
 
+### Q11 — v2 auto-rollback uses Shift+Up × N + Backspace
+
+**Decision:** When v2 adds auto-rollback for chunk-verify failures (Q10's "v1 ships with manual recovery" relaxation), the delete primitive is: Shift held, Up-arrow tapped N times (N = lines in the failed chunk), Shift released, Backspace fired once. All keystrokes use the Q2 cliclick recipe — plain keycodes, no `CGEventFlags`.
+
+**Why:** Phase 2.5's interactive probe (tasks 20–22) fired all five candidates against AVD via `typer delete-<candidate>` subcommands. **All five cleanly removed a typed 5-line block** (Backspace × 30, Ctrl+Z once, Ctrl+Z × 5, Shift+Up × 5 + Backspace, Shift+Up × 5 + Forward Delete — all reported CLEAN). Every candidate works; choosing among them:
+
+- **Keystroke count.** Shift+Up × N + Backspace is ~N+3 events (Shift down, N Up taps, Shift up, Backspace) regardless of chunk *character* count. Backspace × N scales with character count (30 for a 5-line block, 400+ for a 5-line block of long lines). Shorter = less RDP-hop drop exposure per rollback.
+- **Robustness under RDP jitter.** If one keystroke drops, Shift+Up + Backspace under-selects by exactly one line and leaves that line as residue — detectable on re-verify. Backspace × N under-deletes by one character, which can look like a successful-but-noisy delete and bury the signal.
+- **Count semantics.** "N Up-arrows" maps directly to "N lines of input we typed." Backspace × N requires computing `sum(len(line) for line in chunk) + len(chunk)` (chars plus newlines), which gets wrong whenever an editor auto-indents or auto-pairs (IDEs beyond Notepad).
+- **Editor portability.** Ctrl+Z works but its grouping is editor-specific (one press undoes one keystroke in some editors, one word in others, one continuous typing burst in others). Over-undo is silent and scope-creeps into content the user typed before us. Shift+Up selection is uniform across text editors.
+
+**Forward Delete vs Backspace on the selection:** both work (probe candidates 4 and 5 both reported CLEAN). Picking Backspace because:
+- `KEYCODE_DELETE = 51` is already proven at high volume via the PoC's `clear_editor`.
+- `KEYCODE_FORWARD_DELETE = 117` is proven against AVD by Phase 2.5's probe but has no other production usage in the PoC lineage.
+- After deleting the selection the cursor lands at the start of the now-empty region — identical behavior for both keys on a selection. No semantic difference.
+
+**Not chosen for v2:**
+- **Ctrl+Z × N** — editor-specific grouping rules make "how many Ctrl+Z's undo N lines" indeterminate.
+- **Backspace × N** — acceptable fallback if Shift+Up ever fails against a future RDP client, but we'd know only via the re-verify loop surfacing residue.
+
+**Source:** Phase 2.5 probe commits `e740870` (combined `delete-test`) and `81ae8e7` (split into per-candidate subcommands). Operator-recorded outcomes (2026-04-24): all 5 candidates CLEAN on AVD + Notepad.
+
+**Implication for future work:** a v2 library function `typer_core::delete_last_chunk(src, chunk_line_count, cfg)` can encapsulate the Shift+Up + Backspace sequence. Q10's "pause and surface" stays v1; v2 adds an Auto-Retry option that calls `delete_last_chunk` then re-types. The Tauri command `send_with_chunked_verify` gains a `retry_policy` parameter (`Manual` | `AutoRetry(max_attempts)`).
+
 ## Build phases
 
 High-level ordering for the `dev-task` skill. See `docs/progress.md` for the live task list with statuses.
