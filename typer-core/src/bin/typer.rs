@@ -111,17 +111,37 @@ enum Cmd {
         settle_ms: u64,
     },
 
-    /// Phase 2.5 investigative probe: fire five candidate delete
-    /// strategies with announce-pauses so the operator can watch AVD
-    /// and report which strategies cleanly remove a typed 5-line
-    /// block. Mirrors the scroll-test shape that sourced Q5. Task 22
-    /// writes up results + appends Q11 to design-plan.
-    DeleteTest {
+    /// Phase 2.5 probe: type a 5-line test block, then fire Backspace
+    /// × N. Default N=30 (5 lines × 5 chars + 5 newlines).
+    DeleteBackspaceN {
         #[arg(long, default_value_t = 3)]
         countdown: u64,
-        /// Pause between candidates so the operator can observe AVD.
-        #[arg(long, default_value_t = 8000)]
-        pause_ms: u64,
+        /// Number of Backspace keystrokes to fire.
+        #[arg(long, default_value_t = 30)]
+        n: u32,
+    },
+    /// Phase 2.5 probe: type a 5-line test block, then fire Ctrl+Z
+    /// once (via the Q2 cliclick recipe).
+    DeleteCtrlZOnce {
+        #[arg(long, default_value_t = 3)]
+        countdown: u64,
+    },
+    /// Phase 2.5 probe: type a 5-line test block, then fire Ctrl+Z × 5.
+    DeleteCtrlZFive {
+        #[arg(long, default_value_t = 3)]
+        countdown: u64,
+    },
+    /// Phase 2.5 probe: type a 5-line test block, then fire Shift+Up × 5
+    /// + Backspace (Q2 cliclick recipe, no CGEventFlags).
+    DeleteShiftUpBackspace {
+        #[arg(long, default_value_t = 3)]
+        countdown: u64,
+    },
+    /// Phase 2.5 probe: type a 5-line test block, then fire Shift+Up × 5
+    /// + Forward Delete (keycode 117).
+    DeleteShiftUpForwardDelete {
+        #[arg(long, default_value_t = 3)]
+        countdown: u64,
     },
 }
 
@@ -177,10 +197,13 @@ fn run(cli: Cli) -> Result<()> {
             countdown,
             settle_ms,
         } => do_send_chunk(&file, &ocr, countdown, settle_ms),
-        Cmd::DeleteTest {
-            countdown,
-            pause_ms,
-        } => do_delete_test(countdown, pause_ms),
+        Cmd::DeleteBackspaceN { countdown, n } => do_delete_backspace_n(countdown, n),
+        Cmd::DeleteCtrlZOnce { countdown } => do_delete_ctrl_z_once(countdown),
+        Cmd::DeleteCtrlZFive { countdown } => do_delete_ctrl_z_five(countdown),
+        Cmd::DeleteShiftUpBackspace { countdown } => do_delete_shift_up_backspace(countdown),
+        Cmd::DeleteShiftUpForwardDelete { countdown } => {
+            do_delete_shift_up_forward_delete(countdown)
+        }
     }
 }
 
@@ -466,22 +489,22 @@ fn flagged_keytap(source: &CGEventSource, code: u16, flags: CGEventFlags, tap: C
     }
 }
 
-// ---------- delete-test (Phase 2.5 probe — v2 auto-retry source) ----------
+// ---------- delete probes (Phase 2.5 — one subcommand per candidate) ----------
 
 /// 5-line test block. Plain ASCII, all unshifted, distinctive so the
 /// operator can see clearly whether a delete strategy removed it.
 const TEST_BLOCK: [&str; 5] = ["line1", "line2", "line3", "line4", "line5"];
 
-/// Number of editor "characters" the 5-line block occupies: 25 typed
-/// chars + 5 newlines = 30. That's the backspace count needed to undo
-/// the block if the editor counts each typed char + each RETURN as one
-/// position (true for Notepad; may differ for auto-indent IDEs).
-const TEST_BLOCK_CHAR_COUNT: u32 = 30;
-
 /// 'z' keycode from the US-ANSI keymap (see typer_core::keymap).
 const KEYCODE_Z: u16 = 6;
 
-fn do_delete_test(countdown: u64, pause_ms: u64) -> Result<()> {
+/// Shared orchestration: countdown → warmup → send_chunk(TEST_BLOCK) →
+/// 2s settle → fire delete strategy → print observation prompt.
+/// Operator cleans up AVD between runs at their own pace.
+fn do_delete_probe<F>(name: &str, countdown: u64, fire: F) -> Result<()>
+where
+    F: FnOnce(&RealEventSource, &SendCfg) -> Result<()>,
+{
     let cfg = SendCfg::default();
     let src = RealEventSource::new(
         CGEventSourceStateID::CombinedSessionState,
@@ -489,74 +512,55 @@ fn do_delete_test(countdown: u64, pause_ms: u64) -> Result<()> {
     )?;
 
     println!(
-        "\n=== delete-test: probe five delete strategies ===\n\
-         Focus the AVD editor. Each candidate types a 5-line block,\n\
-         pauses, fires a delete strategy, pauses again so you can\n\
-         observe.\n"
+        "\n=== delete probe: {name} ===\n\
+         Focus the AVD editor (make sure it's empty)."
     );
     do_countdown(countdown);
     warmup_shift(&src, &cfg)?;
 
-    run_candidate(1, "Backspace x N (N=30)", &src, &cfg, pause_ms, |s, c| {
-        fire_backspace_n(s, c, TEST_BLOCK_CHAR_COUNT)
-    })?;
-    run_candidate(2, "Ctrl+Z once", &src, &cfg, pause_ms, fire_ctrl_z_once)?;
-    run_candidate(3, "Ctrl+Z x 5", &src, &cfg, pause_ms, fire_ctrl_z_five)?;
-    run_candidate(
-        4,
-        "Shift+Up x 5 + Backspace",
-        &src,
-        &cfg,
-        pause_ms,
-        fire_shift_up_backspace,
-    )?;
-    run_candidate(
-        5,
-        "Shift+Up x 5 + Forward Delete",
-        &src,
-        &cfg,
-        pause_ms,
-        fire_shift_up_forward_delete,
-    )?;
+    let refs: Vec<&str> = TEST_BLOCK.to_vec();
+    send_chunk(&src, &refs, &cfg)?;
+    println!(">>> Block typed. Firing '{name}' in 2s...");
+    thread::sleep(Duration::from_millis(2000));
+
+    fire(&src, &cfg)?;
 
     println!(
-        "\n=== done. For each candidate: did the 5-line block disappear cleanly?\n\
-             - CLEAN: AVD now empty (or back to whatever was before we typed).\n\
-             - PARTIAL: block partly removed; remnants visible.\n\
-             - NO-OP: block still there; keystroke didn't reach AVD.\n\
-         Report results so task 22 can lock the v2 delete primitive."
+        "\n=== done. Observe AVD.\n\
+             - CLEAN: block fully gone\n\
+             - PARTIAL: some removed, remnants visible\n\
+             - NO-OP: block still there\n\
+         Clean up AVD manually and run the next probe when ready."
     );
     Ok(())
 }
 
-fn run_candidate<F>(
-    n: u32,
-    name: &str,
-    src: &RealEventSource,
-    cfg: &SendCfg,
-    pause_ms: u64,
-    fire: F,
-) -> Result<()>
-where
-    F: FnOnce(&RealEventSource, &SendCfg) -> Result<()>,
-{
-    println!("\n=== CANDIDATE {n}/5: {name} ===");
-    println!(">>> Make sure AVD editor is empty + focused. 8s...");
-    thread::sleep(Duration::from_millis(8000));
+fn do_delete_backspace_n(countdown: u64, n: u32) -> Result<()> {
+    do_delete_probe("Backspace x N", countdown, |s, c| fire_backspace_n(s, c, n))
+}
 
-    let refs: Vec<&str> = TEST_BLOCK.to_vec();
-    send_chunk(src, &refs, cfg)?;
-    println!(">>> Block typed. Firing '{name}' in 3s...");
-    thread::sleep(Duration::from_millis(3000));
+fn do_delete_ctrl_z_once(countdown: u64) -> Result<()> {
+    do_delete_probe("Ctrl+Z once", countdown, fire_ctrl_z_once)
+}
 
-    fire(src, cfg)?;
+fn do_delete_ctrl_z_five(countdown: u64) -> Result<()> {
+    do_delete_probe("Ctrl+Z x 5", countdown, fire_ctrl_z_five)
+}
 
-    println!(
-        ">>> '{name}' fired. Observe AVD. {}s pause before next candidate...",
-        pause_ms / 1000
-    );
-    thread::sleep(Duration::from_millis(pause_ms));
-    Ok(())
+fn do_delete_shift_up_backspace(countdown: u64) -> Result<()> {
+    do_delete_probe(
+        "Shift+Up x 5 + Backspace",
+        countdown,
+        fire_shift_up_backspace,
+    )
+}
+
+fn do_delete_shift_up_forward_delete(countdown: u64) -> Result<()> {
+    do_delete_probe(
+        "Shift+Up x 5 + Forward Delete",
+        countdown,
+        fire_shift_up_forward_delete,
+    )
 }
 
 fn fire_backspace_n(src: &RealEventSource, cfg: &SendCfg, n: u32) -> Result<()> {
@@ -755,9 +759,32 @@ mod tests {
     }
 
     #[test]
-    fn cli_delete_test_has_default_args() {
-        assert!(Cli::try_parse_from(["typer", "delete-test"]).is_ok());
-        assert!(Cli::try_parse_from(["typer", "delete-test", "--countdown", "0"]).is_ok());
-        assert!(Cli::try_parse_from(["typer", "delete-test", "--pause-ms", "5000"]).is_ok());
+    fn cli_delete_backspace_n_has_defaults() {
+        assert!(Cli::try_parse_from(["typer", "delete-backspace-n"]).is_ok());
+    }
+
+    #[test]
+    fn cli_delete_backspace_n_accepts_n_override() {
+        assert!(Cli::try_parse_from(["typer", "delete-backspace-n", "--n", "50"]).is_ok());
+    }
+
+    #[test]
+    fn cli_delete_ctrl_z_once_has_defaults() {
+        assert!(Cli::try_parse_from(["typer", "delete-ctrl-z-once"]).is_ok());
+    }
+
+    #[test]
+    fn cli_delete_ctrl_z_five_has_defaults() {
+        assert!(Cli::try_parse_from(["typer", "delete-ctrl-z-five"]).is_ok());
+    }
+
+    #[test]
+    fn cli_delete_shift_up_backspace_has_defaults() {
+        assert!(Cli::try_parse_from(["typer", "delete-shift-up-backspace"]).is_ok());
+    }
+
+    #[test]
+    fn cli_delete_shift_up_forward_delete_has_defaults() {
+        assert!(Cli::try_parse_from(["typer", "delete-shift-up-forward-delete"]).is_ok());
     }
 }
