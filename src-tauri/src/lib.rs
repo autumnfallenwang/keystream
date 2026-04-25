@@ -1,11 +1,11 @@
-mod calibrate;
+pub mod calibrate;
 mod json_log;
-mod lint;
-mod log_commands;
-mod send;
+pub mod lint;
+pub mod log_commands;
+pub mod send;
 mod send_state;
-mod validation;
-mod verify;
+pub mod validation;
+pub mod verify;
 
 use std::path::PathBuf;
 

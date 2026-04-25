@@ -18,7 +18,10 @@ const REGION_FILE: &str = "region.txt";
 /// Parse the `region_picker` sidecar's stdout into a `Region`. Expected
 /// format: `"x y w h"` (space-separated non-negative integers). Tolerant
 /// of trailing whitespace since `region_picker` prints a newline.
-pub(crate) fn parse_picker_stdout(stdout: &str) -> Result<Region, String> {
+///
+/// `pub` (not `pub(crate)`) so integration tests at the crate boundary
+/// can exercise it through the public API.
+pub fn parse_picker_stdout(stdout: &str) -> Result<Region, String> {
     let trimmed = stdout.trim();
     if trimmed.is_empty() {
         return Err("region_picker returned empty output".into());
