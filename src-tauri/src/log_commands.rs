@@ -36,3 +36,32 @@ pub fn open_log_dir() -> Result<(), String> {
     log::info!("open_log_dir: path={}", dir.display());
     open::that(&dir).map_err(|e| format!("Failed to open log directory: {e}"))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::validation::MAX_TEXT_BYTES;
+
+    // Wiring tests: each log_* command rejects oversized messages.
+    // Regression target: a future edit that drops `validate_text_size`
+    // from the command body would still pass validation.rs's unit tests
+    // but fail these.
+
+    #[test]
+    fn log_info_rejects_oversized_message() {
+        let big = "x".repeat(MAX_TEXT_BYTES + 1);
+        assert!(log_info(big).is_err());
+    }
+
+    #[test]
+    fn log_warn_rejects_oversized_message() {
+        let big = "x".repeat(MAX_TEXT_BYTES + 1);
+        assert!(log_warn(big).is_err());
+    }
+
+    #[test]
+    fn log_error_rejects_oversized_message() {
+        let big = "x".repeat(MAX_TEXT_BYTES + 1);
+        assert!(log_error(big).is_err());
+    }
+}
