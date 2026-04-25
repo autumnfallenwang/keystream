@@ -3,6 +3,10 @@
 //! `Channel<SendEvent>` passed in by the frontend; the paired
 //! `continue_after_fail` command lets the frontend ack a chunk-fail
 //! decision per Q10.
+//!
+//! Argument validation: `text` is bounded by
+//! `crate::validation::MAX_TEXT_BYTES` (1 MiB). `ContinueAction` is
+//! validated by serde (only enum variants accepted). See rules/security.md.
 
 use std::sync::atomic::Ordering;
 use std::time::Duration;
@@ -17,6 +21,7 @@ use typer_core::{
 
 use crate::calibrate::region_path;
 use crate::send_state::{ContinueAction, SendState};
+use crate::validation::validate_text_size;
 use crate::verify::capture_and_diff;
 
 /// Events streamed to the frontend during a send. Shape matches the
@@ -70,6 +75,8 @@ pub async fn send_with_chunked_verify(
     text: String,
     on_event: Channel<SendEvent>,
 ) -> Result<(), String> {
+    validate_text_size(&text, "text")?;
+
     // Reset cancel flag for this run (previous stop_send calls don't
     // poison new sessions).
     state.cancel.store(false, Ordering::SeqCst);

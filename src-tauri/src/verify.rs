@@ -6,6 +6,10 @@
 //! `send_with_chunked_verify` (task 26). Centralising the helper here
 //! keeps one copy of the OCR pipeline (screencapture → sidecar → parse
 //! → diff).
+//!
+//! Argument validation: `expected: Vec<String>` and `sent: String` are
+//! bounded by `crate::validation::MAX_TEXT_BYTES` (1 MiB) and
+//! `crate::validation::MAX_LINES` (100k). See rules/security.md.
 
 use serde::Serialize;
 use std::time::Duration;
@@ -22,6 +26,7 @@ use typer_core::stitch::{chunks_equivalent, stitch_chunks};
 use typer_core::{diff_against_tail, DiffLine, DiffStats, EventSource, RealEventSource, SendCfg};
 
 use crate::calibrate::region_path;
+use crate::validation::{validate_lines_size, validate_text_size};
 
 /// Returned by `verify_visible` and `scroll_verify`. Frontend sees
 /// `{ stats: DiffStats, diff: DiffLine[] }` (camelCase on nested
@@ -84,6 +89,7 @@ pub(crate) async fn capture_and_diff(
 /// returns a trivial pass (matches library's `verify_visible` behavior).
 #[tauri::command]
 pub async fn verify_visible(app: AppHandle, expected: Vec<String>) -> Result<VerifyResult, String> {
+    validate_lines_size(&expected, "expected")?;
     let path = region_path(&app)?;
     let region = load_region(&path).map_err(|e| format!("region not calibrated: {e}"))?;
 
@@ -107,6 +113,7 @@ pub async fn verify_visible(app: AppHandle, expected: Vec<String>) -> Result<Ver
 /// `std::process::Command`. Keep both in sync if either changes.
 #[tauri::command]
 pub async fn scroll_verify(app: AppHandle, sent: String) -> Result<VerifyResult, String> {
+    validate_text_size(&sent, "sent")?;
     let path = region_path(&app)?;
     let region = load_region(&path).map_err(|e| format!("region not calibrated: {e}"))?;
 

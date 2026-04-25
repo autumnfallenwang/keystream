@@ -4,6 +4,7 @@ mod lint;
 mod log_commands;
 mod send;
 mod send_state;
+mod validation;
 mod verify;
 
 use std::path::PathBuf;
