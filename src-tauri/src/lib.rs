@@ -60,6 +60,7 @@ pub fn run() {
             lint::check_lines,
             send::send_with_chunked_verify,
             send::continue_after_fail,
+            send::stop_send,
             verify::verify_visible,
             verify::scroll_verify,
         ])

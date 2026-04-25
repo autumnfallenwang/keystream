@@ -228,6 +228,22 @@ pub async fn continue_after_fail(
 
 // capture_and_diff moved to crate::verify in task 27. Imported above.
 
+/// Cooperative cancel for an in-flight `send_with_chunked_verify`.
+/// Flips the shared cancel flag; the orchestrator polls it between
+/// chunks and emits `SendCancelled` next time it checks.
+///
+/// Safe to call any time — if no send is running, flipping the flag
+/// is a no-op (the next session resets it at its top).
+///
+/// Companion to `continue_after_fail(Stop)`: the latter only takes
+/// effect while a chunk-fail is paused awaiting an ack; `stop_send`
+/// works during normal chunk typing too.
+#[tauri::command]
+pub fn stop_send(state: State<'_, SendState>) {
+    state.cancel.store(true, Ordering::SeqCst);
+    log::info!("stop_send: cancel flag set");
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
