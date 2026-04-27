@@ -66,6 +66,22 @@ fn validation_helpers_visible_through_public_api() {
     assert!(keystream_lib::validation::validate_text_size("ok", "label").is_ok());
 }
 
+#[test]
+fn read_text_file_roundtrip_via_public_api() {
+    let path = std::env::temp_dir().join("kstest_smoke_read_text_file.txt");
+    std::fs::write(&path, "hello\nworld").unwrap();
+    let result =
+        keystream_lib::file_io::read_text_file(path.to_string_lossy().into_owned()).unwrap();
+    assert_eq!(result, "hello\nworld");
+    let _ = std::fs::remove_file(&path);
+}
+
+#[test]
+fn open_settings_pane_rejects_unknown_via_public_api() {
+    let err = keystream_lib::permissions::open_settings_pane("garbage".into()).unwrap_err();
+    assert!(err.contains("unknown settings pane"), "got: {err}");
+}
+
 // ---- Compile-time signature checks for runtime-only commands ----
 // Never called. Forces the compiler to verify each function exists.
 // A regression that drops an underlying fn (e.g. removing
@@ -80,10 +96,16 @@ fn _signature_checks() {
     let _ = keystream_lib::calibrate::calibrate;
     let _ = keystream_lib::calibrate::get_region;
     let _ = keystream_lib::calibrate::clear_region;
+    let _ = keystream_lib::file_io::read_text_file;
     let _ = keystream_lib::verify::verify_visible;
     let _ = keystream_lib::verify::scroll_verify;
     let _ = keystream_lib::send::send_with_chunked_verify;
     let _ = keystream_lib::send::continue_after_fail;
     let _ = keystream_lib::send::stop_send;
     let _ = keystream_lib::log_commands::open_log_dir;
+    let _ = keystream_lib::permissions::check_permissions;
+    let _ = keystream_lib::permissions::open_settings_pane;
+    let _ = keystream_lib::persist::save_text;
+    let _ = keystream_lib::persist::get_text;
+    let _ = keystream_lib::persist::clear_text;
 }

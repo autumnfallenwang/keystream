@@ -186,7 +186,7 @@
       }
     },
     {
-      "includes": ["**/*.test.ts", "tests/**"],
+      "includes": ["**/*.test.ts", "**/*.test.tsx", "tests/**"],
       "linter": {
         "rules": {
           "security": {

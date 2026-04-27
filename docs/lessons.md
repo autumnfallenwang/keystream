@@ -51,3 +51,9 @@ Both `Ctrl+Z once` and `Ctrl+Z × 5` cleanly removed the test block in AVD + Not
 ### 2026-04-24 · A `#` flash during Ctrl+Z × 5 is harmless; noting for future readers
 
 During the `delete-ctrl-z-five` probe the operator observed a brief `#` character flash in the editor before disappearing. Most likely cause: the editor's undo implementation momentarily re-renders a character during the rapid-fire Ctrl+Z sequence (undo replays the typed chars in reverse, and at ~50ms between presses the render pipeline can show a transient glyph). Not caused by our keystroke stream; not seen in the other four probes. Documented here so a future observer doesn't mistake it for residue.
+
+## Phase 4 lessons
+
+### YYYY-MM-DD · Phase 4 live-AVD smoke (TBD — operator run pending)
+
+**Status: awaiting operator run.** Runbook at [`docs/runbooks/live-avd-smoke.md`](runbooks/live-avd-smoke.md). Replace this stub after a successful run with: run date, AVD client + version, target editor, accuracy %, char_diffs aggregate, any anomalies. Counts only — never the typed content.

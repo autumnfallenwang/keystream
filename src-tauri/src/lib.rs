@@ -1,7 +1,10 @@
 pub mod calibrate;
+pub mod file_io;
 mod json_log;
 pub mod lint;
 pub mod log_commands;
+pub mod permissions;
+pub mod persist;
 pub mod send;
 mod send_state;
 pub mod validation;
@@ -44,6 +47,7 @@ pub fn run() {
     log::info!("build={}", if is_debug { "debug" } else { "release" });
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_shell::init())
         .setup(|app| {
             use tauri::Manager;
@@ -58,7 +62,13 @@ pub fn run() {
             calibrate::calibrate,
             calibrate::get_region,
             calibrate::clear_region,
+            file_io::read_text_file,
             lint::check_lines,
+            permissions::check_permissions,
+            permissions::open_settings_pane,
+            persist::save_text,
+            persist::get_text,
+            persist::clear_text,
             send::send_with_chunked_verify,
             send::continue_after_fail,
             send::stop_send,

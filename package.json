@@ -15,12 +15,13 @@
     "lint:fix": "biome check --write .",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:fast": "vitest run --exclude '**/*.integration.test.ts'",
+    "test:fast": "vitest run --exclude '**/*.integration.test.{ts,tsx}'",
     "check": "pnpm lint && pnpm typecheck && pnpm test",
     "bump": "node scripts/bump-version.mjs"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.10.1",
+    "@tauri-apps/plugin-dialog": "^2.7.0",
     "next": "16.2.4",
     "react": "19.2.4",
     "react-dom": "19.2.4"
@@ -29,9 +30,13 @@
     "@biomejs/biome": "^2.4.13",
     "@tailwindcss/postcss": "^4",
     "@tauri-apps/cli": "^2.10.1",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
+    "@testing-library/user-event": "^14.6.1",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "happy-dom": "^20.9.0",
     "tailwindcss": "^4",
     "tsx": "^4.21.0",
     "typescript": "^5",
