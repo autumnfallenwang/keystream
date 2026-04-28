@@ -21,7 +21,7 @@ v1 phase summary:
 | v2-2 | Strip OCR + chunking from `typer-core/`; add Q14 SendControl tri-state | done | OCR/verify/align/fold/stitch/scroll/region/lint/diff modules + Swift sidecars deleted; control.rs added (5 tests); sender.rs takes SendControlFlag + start_offset, returns SendOutcome; CLI slimmed to just `send` (4 tests); 24 typer-core tests passing; clippy + fmt clean. **src-tauri intentionally broken until v2-3.** |
 | v2-3 | Strip OCR + chunking from `src-tauri/`; add pause/resume commands | done | calibrate/lint/verify modules deleted; settings.rs added (6 tests); send_state.rs wraps SendControlFlag; send.rs has new run_send/pause_send/stop_send + SendComplete/SendPaused/SendStopped events; permissions drops screenRecording; lib.rs + Cargo.toml + tauri.conf.json + capabilities trimmed (no shell plugin / sidecars). 68 workspace tests passing; clippy + fmt clean. **Frontend (`src/`) still uses v1 IPC; v2-4 rewrites it.** |
 | v2-4 | Rewrite frontend for the locked v2 UI | done | New components: sidebar / main-header / action-bar / settings-page. Rewritten: text-panel (with active-line scanline), countdown-overlay (Fraunces ring + numeral). New pure core: app-state.ts (reducer, 13 tests), active-line.ts (6 tests). New IPC: runSend / pauseSend / stopSend / getSettings / saveSettings + SendEvent variants. v2 palette + Fraunces + JetBrains Mono via next/font. 44 vitest passing; 68 cargo passing; pnpm build clean; pnpm typecheck clean; pnpm lint clean (4 pre-existing warnings only). |
-| v2-5 | Settings pane (Q13) — 4 dials + persistence | pending | see "Phase v2-5 unpacked" below |
+| v2-5 | Settings pane (Q13) — 4 dials + persistence | code done; operator-pending | Settings UI shipped in v2-4. v2-5 added test coverage for the 4 v2-4 components (sidebar / main-header / action-bar / settings-page); **84 vitest passing** (up from 44). Operator-side DoD items (settings-persist-across-relaunch, AVD smoke against v2 binary) are recorded under "What's Next" — they need a built app and human, not code. |
 | v2-6 | Polish + ship | pending | dmg builds; first-launch on a clean Mac works; release notes drafted |
 
 References:
@@ -31,15 +31,13 @@ References:
 
 ## What's Next
 
-**Phase v2-5 — Settings pane polish + first manual end-to-end smoke.**
+**v2-5 operator handoff — three manual checks before v2-6 starts.**
 
-The Q13 settings page is in place (sidebar Settings → page replacement; debounced 300ms persistence; sliders for `eventPauseMs`/`modHoldMs`/`countdownSecs`; checkbox for `warmupShift`; Reset to defaults). v2-5 adds polish:
-- Verify settings persist across app relaunch end-to-end
-- Confirm slider ranges feel right (5-20ms event pause, 1-10s countdown)
-- Add helper-text accuracy checks (the "AVD floor 7ms" hint per Q13)
-- First operator-driven AVD smoke against `pnpm tauri:build` of the v2 app
+1. **Settings persist across app relaunch.** `pnpm tauri:build` → install Keystream.app → open Settings → change Event pause to 8ms → quit → relaunch → open Settings → confirm 8ms is still selected.
+2. **Reset to defaults persists.** From the same flow: click Reset to defaults → confirm dials snap back to 10ms / 10ms / 3s / warmup ON → quit → relaunch → confirm reset persisted.
+3. **First v2 AVD smoke.** With AVD/Notepad focused, load `docs/poc/samples/code_corpus.txt` (29 lines, 916 chars) → click Send → expect 0 shift-drops at the default 10ms event_pause_ms.
 
-**Pending operator action from v2-1**: still relevant. Now the full v2 stack is on the production code path — load `docs/poc/samples/code_corpus.txt`, click Send, watch it type cleanly with no shift-drops.
+The first two are quick (under 2 min). The AVD smoke is the bigger commitment — after it succeeds, v2 is end-to-end validated and **Phase v2-6** (polish + ship) begins.
 
 **SendProgress note**: `run_send` still doesn't emit mid-loop progress events. The status line in the action bar shows `Typing N chars` from the channel events but `N` doesn't tick during the run — only on completion. Real callback-driven progress is a v2-polish follow-up. Acceptable for the v2 launch since the user has the active-line scanline as the visual feedback.
 
