@@ -2,124 +2,203 @@
 
 Live task tracker. Update via `/update-progress` after finishing work. The "why" behind each phase lives in `docs/design-plan.md`.
 
-## Phase 1 — Scaffold
+## v1 retrospective (preserved for context)
 
-| # | Task | Status |
-|---|---|---|
-| 1 | Create `keystream/` repo, scaffold Next.js 16 + Tauri 2 + TypeScript + Tailwind 4 | done |
-| 2 | Inherit tooling from teacherease (biome, vitest, CLAUDE.md, .claude, .gitignore, LICENSE, README) | done |
-| 3 | Seed `docs/design-plan.md` and `docs/progress.md` with PoC decisions | done |
-| 4 | Inherit universal infra — JSON logger, ipc facade, bump-version script, CI workflow, smoke test | done |
-| 5 | First commit (initial scaffold) | done |
+v1 (Phases 1–4 + Phase 2.5) shipped a per-chunk OCR-verify architecture with 16 Tauri commands, a four-gate UI, and a fail-and-retry handshake. The live-AVD smoke (task 47) surfaced intermittent shift-drops, which led to the [poc2 keystroke-injection study](poc2-results.md). poc2 found that switching the CGEvent source state to `Private` eliminates the bug entirely — at byte-perfect input reliability, OCR-verify becomes unnecessary complexity. v2 is a substantial simplification.
 
-## Phase 2 — Split typer-core
+v1 phase summary:
+- Phase 1 (scaffold), Phase 2 (split typer-core), Phase 2.5 (delete-primitive PoC), Phase 3 (16 Tauri commands), Phase 4 (UI build-out incl. tasks 32-46): all completed. Task 47 (live-AVD smoke) caught the shift-drop bug that drove poc2.
+- 140 cargo tests + 78 vitest tests passing as of the v1 freeze.
+- Most v1 code becomes obsolete in v2 (OCR pipeline, region calibration, chunked verify, fail-and-retry UX, region_picker sidecar). The keystroke sender stays — with the Q12 fix.
 
-| # | Task | Status |
-|---|---|---|
-| 6 | Convert repo to a Cargo workspace with `typer-core/` and `src-tauri/` as members. | done |
-| 7 | Extract sender / verify / scroll / LCS / fold / stitch from [`docs/poc/typer/src/main.rs`](poc/typer/src/main.rs) into `typer-core/` crate. Keep PoC functions (`run_send`, `run_scroll_verify`) intact for whole-file mode. Replace `process::exit` / `eprintln!` with `Result<_, Error>` returns (thiserror) and `log::*` calls — libraries can't exit. | done |
-| 8 | Add `send_chunk(lines: &[&str])` + `verify_visible(expected: &[&str]) -> DiffStats` (new pair for Q7/Q9 chunked loop). Reuses `send_char`, `capture_ocr_lines`, `print_diff` from extracted code. | done |
-| 9 | Centralise all numeric defaults in `typer-core/src/config.rs` as named `const`s (CHUNK_SIZE_LINES=5, MAX_LINE_CHARS=80, COUNTDOWN_SECS=3, EVENT_PAUSE_MS=10, MOD_HOLD_MS=10, SCROLL_SETTLE_MS=250, VERIFY_PASS_THRESHOLD=0). | done |
-| 10 | Keep a thin CLI shim in `typer-core/src/bin/typer.rs` for local testing (preserves all PoC subcommands). | done |
-| 11 | Copy Swift sidecar sources from [`docs/poc/ocr_helper/`](poc/ocr_helper/) to `src-tauri/binaries/src/` and compile binaries into `src-tauri/binaries/`. | done |
-| 12 | Introduce an `EventSource` trait so sender logic is testable without posting real CGEvents — production impl wraps `core-graphics`, test impl records calls. Required by tasks 15–17. | done (pulled forward into task 7) |
-| 13 | **Unit: keymap coverage.** `char_to_keycode` returns Some for every printable ASCII char in the sample corpus. Inline `#[cfg(test)]` in `typer-core/src/keymap.rs`. | done |
-| 14 | **Unit: fold table.** `fold_char` maps each documented confusion class (`` ` `` ↔ `'`, `<` ↔ `‹`, etc.) to a single canonical char. One assertion per class. | done |
-| 15 | **Unit: LCS alignment.** Given `sent_lines` and `seen_lines` derived from [`stress1_ocr.json`](poc/results/stress1_ocr.json), `align_lines` returns the expected aligned pairs with correct `OCR_DROP`/`OCR_XTRA` positions. Covers `rules/testing.md` invariant #4. | done |
-| 16 | **Unit: chunk stitching.** Three overlapping OCR chunks from the sample corpus stitch to the expected 58-line result. Covers `rules/testing.md` invariant #3. | done |
-| 17 | **Integration: regression fixture.** Keystroke expectations for [`docs/poc/samples/code_corpus.txt`](poc/samples/code_corpus.txt) (0 skipped, 0 typing errors). `typer-core` emits expected keystroke sequence via the trait-mocked event source; diffed against committed fixture under `tests/fixtures/`. Covers `rules/testing.md` invariant #1. | done |
-| 18 | **Integration: shift warmup regression.** Toggles `warmup_shift`; proves the keystroke sequence differs and that removing warmup would cause the first-shifted-char drop documented in PoC. Covers `rules/testing.md` invariant #2. | done |
-| 19 | **Integration: chunked verify pair.** `send_chunk` + `verify_visible` against a synthetic 10-line fixture; asserts pass on clean OCR JSON and fail with expected char_diffs on a one-char-corrupted OCR JSON. | done |
+## v2 phase plan
 
-## Phase 2.5 — Delete-primitive PoC
-
-Unblocks v2 auto-retry (Q10, currently deferred). v1 ships without auto-rollback; this proves which delete strategy is safe to add later.
-
-| # | Task | Status |
-|---|---|---|
-| 20 | New CLI subcommand `typer delete-test` mirroring PoC `scroll-test` shape: types a known 5-line block, then fires each candidate delete strategy with announce-pause between attempts. User watches AVD and reports which strategies cleanly removed the block. | done |
-| 21 | Candidates to probe: (a) Backspace × N chars, (b) Ctrl+Z once, (c) Ctrl+Z × 5, (d) Shift+Up × 5 + Backspace, (e) Shift+Up × 5 + Delete-key (keycode 117, Forward Delete). | done |
-| 22 | Document outcome in `docs/lessons.md` (which strategies reach AVD, which don't), append decision Q11 to `design-plan.md` locking the chosen strategy for v2. | done |
-
-## Phase 3 — Tauri commands
-
-| # | Task | Status |
-|---|---|---|
-| 23 | `calibrate` command — spawns `region_picker` sidecar, validates returned region, persists to app data dir. | done |
-| 24 | `get_region` / `clear_region` commands for UI state. | done |
-| 25 | `check_lines(text)` command — returns `{ ok: bool, offending: [{line: int, length: int}] }` for Q8 pre-check. Pure function, no side effects. | done |
-| 26 | `send_with_chunked_verify(text)` command — drives the Q7+Q9 loop. Emits `chunk-start {index, lines}`, `chunk-pass {index}`, `chunk-fail {index, diff}`, `send-complete {summary}` events. Awaits frontend `continue-after-fail` ack on chunk fail (Q10). | done |
-| 27 | `verify_visible` command (single-region OCR + diff) and `scroll_verify` command (full-file PoC mode, debug). | done |
-| 28 | `stop_send` command — cooperative cancel via shared atomic flag in `typer-core`. | done |
-| 29 | Validate all command arguments per `rules/security.md` — no arbitrary file paths from frontend, OCR JSON parsed via typed serde, capabilities allowlist narrow. | done |
-| 30 | **Unit: command handlers.** Each Tauri command is callable as a plain async Rust function (per `rules/testing.md`: no full Tauri app spin-up). Test arg validation (invalid paths rejected, malformed OCR JSON returns typed error), the chunked-verify state machine against a stub `EventSource`, and the stop-flag cancels mid-loop. | done |
-| 31 | **Integration: Tauri command smoke in CI.** `cargo test -p src-tauri` invokes each command via its exported fn with in-memory deps. Runs in the existing macos-latest CI job. | done |
-
-## Phase 4 — v1 UI
-
-Single-window layout. The text panel dominates; controls and status sit around it. No design polish yet (Phase 5).
-
-| # | Task | Status |
-|---|---|---|
-| 32 | Layout skeleton — single window (min 900×700), three regions: top status/gate strip (~60px), center text panel (fills available space), bottom controls (~80px). Tailwind utilities only, no custom CSS. Empty placeholders in each region. | done |
-| 33 | Text input surface — single panel-as-textarea: pre-load shows "Paste text or click Load File" placeholder + editable; on submit (or file load) flips to immutable read-only mode. "Load file" button uses Tauri dialog plugin. | done |
-| 34 | Pre-task gate strip — four indicators left-to-right (text ✓ / line check ✓ / region ✓ / permissions ✓). Each ✗ is clickable and triggers its remediation. Send button (in bottom controls) disabled unless all four ✓. | done |
-| 35 | Calibrate flow — gate-strip region indicator click → invokes `calibrate` → region_picker overlay → drag → returned region persists → indicator flips to ✓ with badge "Region 1707×922". Hover badge shows full coords (x,y,w,h). | done |
-| 36 | Line-length check (Q8) — on text load, runs `check_lines`. If any line >MAX_LINE_CHARS, indicator shows ✗ + count ("3 lines too long"). Click expands inline list ("Line 12: 137 chars · ..."). Offending lines also get red left-border in the text panel. Re-runs on reload. | done |
-| 37 | Immutable text panel with per-chunk states — scrollable monospace, with line numbers in a left gutter. Lines visually grouped into chunks of CHUNK_SIZE_LINES (subtle divider every 5 lines). Each chunk in one of: untouched (gray), in-progress (blue left-border + light blue bg), pass (green left-border), fail (red left-border, click-to-expand). Initial state: all untouched. | done |
-| 38 | Countdown overlay — fullscreen overlay during pre-send N-second window, large numerals ("3 → 2 → 1 → GO"), instructional text ("Click into the AVD window now"), visible Cancel button. Esc also cancels. Dismisses automatically when first keystroke fires. | done |
-| 39 | Live progress wiring — subscribe to `chunk-start` / `chunk-pass` / `chunk-fail` via `listenTauriEvent`, drive panel state. Bottom controls show "Chunk 3 / 24 · 12% done". Auto-scroll panel only when in-progress chunk is about to leave view (not always center). | done |
-| 40 | Fail handling UI (Q10) — on `chunk-fail`, send loop pauses (backend awaits ack). Failed chunk expands inline showing diff (sent vs seen, char-level highlight on mismatches). Three buttons: **Skip** (`continue-after-fail {action: 'skip'}` → mark failed-acked, advance), **Stop** (`stop_send`), **Continue** (`{action: 'retry-from-here'}` → backend re-runs `verify_visible` on the same chunk after user has fixed AVD; if pass, advance; if still fail, same three buttons reappear). Tooltip on Continue explains the re-verify-same-chunk semantics. | done |
-| 41 | Stop control — button in bottom controls (visible during send) + Esc hotkey. Invokes `stop_send`. Stopped state: current chunk shown yellow left-border + "stopped" badge; remaining chunks revert to untouched. Top status: "Stopped at chunk 7 / 24." v1: no resume — must restart from chunk 1 (auto-rollback in Phase 6). | done |
-| 42 | Permission gating — indicator shows ✓ if Accessibility AND Screen Recording granted, ✗ otherwise. Click ✗ → modal explaining what's needed + "Open System Settings" button (deep-link via `open` crate). Re-checks on app focus (visibilitychange). **Spike risk:** Tauri 2 may not have a built-in macOS permission probe; if not, build a small Swift probe sidecar in Phase 3. Try Tauri builtins first. | done |
-| 43 | Persistence — last-loaded text and saved region survive app relaunch, stored as JSON in Tauri's `path::app_data_dir`. Region already persisted by task 23; this adds text persistence. On launch, restore both into UI state. "Clear" button wipes both (top-right of gate strip). Persistence of user-initiated content is OK; **logging** of sent content is not (`rules/security.md` distinction). | done |
-| 44 | **Unit: pure core modules.** Tests for `src/lib/core/` helpers (diff rendering, line-length checker, chunk grouping by CHUNK_SIZE_LINES, fold table mirror). Colocated `.test.ts` files. Pure — no mocks needed. | done |
-| 45 | **Unit: React components.** Vitest + Testing Library for gate strip (gate states render correctly), text panel (chunk state classes applied), countdown overlay (Esc cancels), fail-handling panel (three buttons render with correct actions). Mock `@/lib/ipc` at module boundary. | done |
-| 46 | **Integration: chunk state machine.** Mock `@/lib/ipc` to emit a scripted sequence of `chunk-start` / `chunk-pass` / `chunk-fail` / `send-complete` events. Assert text panel transitions match expected state at each step, including a pause-for-fail flow and a Skip-then-continue flow. No Tauri runtime needed. | done |
-| 47 | **E2E: live-AVD smoke.** Types the locked `code_corpus.txt` sample, achieves PoC's 98.30%+ aggregate accuracy with **0 chunk failures**. `KEYSTREAM_LIVE_VM=1 pnpm tauri:dev`, captures saved to `sandbox/` (gitignored). Result + date documented in `docs/lessons.md`. Manual run; gated out of CI. | runbook ready (operator run pending) |
-
-## Phase 5 — UI polish
-
-Deferred until v1 is functionally complete. Frontend-design pass, keyboard shortcuts, settings surface.
-
-## Phase 6 — Stretch
-
-Auto-rollback retry (depends on Phase 2.5 result), auto-wrap long lines, multi-profile config, cross-platform scaffolding.
-
-## Testing strategy at a glance
-
-| Layer | Unit | Integration | E2E |
+| Phase | Task | Status | Definition of done |
 |---|---|---|---|
-| `typer-core` (Rust) | 13–16 (keymap, fold, LCS, stitch) | 17–19 (regression fixture, shift warmup, chunk verify pair) | — |
-| Tauri commands (Rust) | 30 (command-as-async-fn) | 31 (cargo test in CI) | — |
-| Pure TS core (`src/lib/core/`) | 44 | — | — |
-| React components | 45 | 46 (chunk state machine with mocked ipc) | — |
-| Full app | — | — | 47 (live AVD, `KEYSTREAM_LIVE_VM=1`, manual) |
+| v2-0 | poc2 study — method survey, AVD validation, speed-floor characterization | done | poc2-results.md committed; sandwich+Private validated 0/45,051 chars on AVD |
+| v2-design | UI design locked (Q12/Q13/Q14 in design-plan.md; v2-frontend-design.md) | done | both docs reviewed; aesthetic + state machine + all 7 open questions resolved |
+| v2-1 | Apply Q12 fix in shipped code | next | one constant changed; `cargo test --workspace` still 140/140; manual AVD smoke clean |
+| v2-2 | Strip OCR + chunking from `typer-core/`; add Q14 SendControl tri-state | pending | see "Phase v2-2 unpacked" below |
+| v2-3 | Strip OCR + chunking from `src-tauri/`; add pause/resume commands | pending | see "Phase v2-3 unpacked" below |
+| v2-4 | Rewrite frontend for the locked v2 UI | pending | see "Phase v2-4 unpacked" below |
+| v2-5 | Settings pane (Q13) — 4 dials + persistence | pending | see "Phase v2-5 unpacked" below |
+| v2-6 | Polish + ship | pending | dmg builds; first-launch on a clean Mac works; release notes drafted |
 
-Every regression invariant from `rules/testing.md` has an explicit task: sender accuracy → 17, shift warmup → 18, chunk stitching → 16, LCS drops → 15.
-
-## What's Working
-
-**Status as of task 46**: Phase 4 build-out complete; sign-off blocked on operator running the live-AVD smoke (task 47).
-
-- **Backend** (`src-tauri/` + `typer-core/`): full v1 IPC surface shipped — `calibrate` / `get_region` / `clear_region` / `check_lines` / `read_text_file` / `save_text` / `get_text` / `clear_text` / `send_with_chunked_verify` / `continue_after_fail` / `stop_send` / `verify_visible` / `scroll_verify` / `check_permissions` / `open_settings_pane` / `log_{info,warn,error}` / `open_log_dir`. Chunked send-and-verify drives the Q7/Q9 loop via `Channel<SendEvent>` + `tokio::sync::mpsc` ack. Q10 fail-await with Skip/Stop/Retry. Cooperative cancel via atomic flag. All command args validated (`MAX_TEXT_BYTES = 1 MiB`). Permissions probed via FFI to `AXIsProcessTrusted` + `CGPreflightScreenCaptureAccess`. Persistence at `<app_data_dir>/{region,text}.txt`. **140 cargo tests passing** (workspace `cargo fmt --check` / `clippy --workspace -- -D warnings` / `test --workspace` clean).
-
-- **Frontend** (`src/`): four-region layout (status strip / drawers / text panel / controls) with Tailwind 4. All four gates wired (Text + Lines + Region + Permissions); Send/Stop/Esc fully behaved. Pre-send 3s countdown overlay; per-chunk visual states (untouched/inProgress/pass/fail/stopped) with line-number gutter; fail-chunk auto-expand + char-level diff renderer + Skip/Stop/Continue buttons; auto-scroll to in-progress chunk; bottom-bar progress text driven by pure helper. Persistence: text + region restore on mount; Clear button wipes both. macOS deep-link to System Settings on permission ✗. **78 vitest tests** across pure helpers (`gates` / `chunks` / `progress` / `diff-render` / `send-dispatcher`), four React component suites (`status-strip` / `text-panel` / `countdown-overlay` / `fail-diff` via happy-dom + Testing Library), and a dispatcher-driven chunk-state-machine integration test.
-
-- **Test infrastructure**: vitest v4 with happy-dom for components; biome 2 linting clean; Next 16 static-export builds clean. `pnpm test:fast` excludes `*.integration.test.{ts,tsx}`. CI workflow disabled (early-dev decision; one-rename to re-enable). Live-VM tests gate on `KEYSTREAM_LIVE_VM=1` (documentation marker — no `.integration.test.ts` files use it yet).
-
-- **Locked decisions** (Q1–Q11 in `design-plan.md`): keycode-only sender (Q1); cliclick shift recipe (Q2); shift warmup during countdown (Q3); Apple Vision OCR sidecar (Q4); PageUp/PageDown for scroll (Q5); LCS-based diff alignment (Q6); 5-line chunks (Q7); ≤80-char line check (Q8); 0-char-diff per-chunk pass (Q9); pause-and-surface on fail, no v1 auto-rollback (Q10); v2 auto-rollback uses Shift+Up × N + Backspace (Q11, validated by Phase 2.5 probe — all 5 candidates CLEAN against AVD + Notepad on 2026-04-24).
-
-- **PoC baseline** (`docs/poc/`): Rust CLI shipping 0 typing errors over 9,160 chars across 5 stress runs, 98.30–98.37% aggregate accuracy after OCR fold. The `code_corpus.txt` sample + `stress1_*` capture are committed regression fixtures.
+References:
+- Architecture per phase: [`design-plan.md`](design-plan.md) "Build phases (v2 rewrite)" section.
+- Visual design for v2-4: [`v2-frontend-design.md`](v2-frontend-design.md).
+- Locked decisions: Q1, Q2, Q3, Q12, Q13, Q14 in [`design-plan.md`](design-plan.md) "Locked Decisions".
 
 ## What's Next
 
-**Apply the v2 keystroke fix from poc2.** During the live-AVD smoke (task 47) the operator surfaced intermittent shift-drops. A round-2 PoC investigation followed; full results at [`docs/poc2-results.md`](poc2-results.md). The locked fix is a one-line change in `typer-core/src/event_source.rs::session_default()`: `CGEventSourceStateID::CombinedSessionState` → `CGEventSourceStateID::Private`. Validated 0/45,051 chars across 3×15k runs on AVD/Notepad.
+**Phase v2-1 — Apply the Q12 fix in shipped code.**
 
-Steps once we apply it:
-1. Edit `typer-core/src/event_source.rs::session_default()` per above.
-2. `cargo test --workspace` — should still be 140/140 (event shape unchanged).
-3. `pnpm tauri:build` and re-run the live-AVD smoke against the production binary.
-4. Mark task 47 done in this file.
+1. Edit `typer-core/src/event_source.rs::session_default()`:
+   ```rust
+   // before
+   CGEventSourceStateID::CombinedSessionState
+   // after
+   CGEventSourceStateID::Private
+   ```
+2. `cargo test --workspace` — expect 140/140 still passing (event shape unchanged).
+3. `pnpm tauri:build` and re-run a short manual smoke against AVD with the production binary. Eyeball the typed output for shift-drops; expect zero.
+4. Commit: `fix(typer-core): use CGEventSourceStateID::Private to eliminate AVD shift-drops (Q12)`.
 
-After that, **Phase 5** (UI polish, settings surface, keyboard shortcuts) and **Phase 6** (auto-rollback retry per Q11, auto-wrap long lines, multi-profile, cross-platform) are the next plan-blocks.
+After v2-1 is in main, the OCR removal in v2-2 can proceed — at that point we expect test counts to drop substantially as the OCR-related code and tests are removed together.
+
+---
+
+## Phase v2-2 unpacked (typer-core: strip OCR, add Q14 SendControl)
+
+**Files to delete:**
+- `typer-core/src/ocr.rs`
+- `typer-core/src/verify.rs`
+- `typer-core/src/align.rs`
+- `typer-core/src/fold.rs`
+- `typer-core/src/stitch.rs`
+- `typer-core/src/scroll.rs`
+- `typer-core/src/region.rs` (region calibration is OCR-only)
+- Tests inline in those modules
+- `typer-core/tests/sender_regression.rs` (depends on OCR fold table — replace with a non-OCR keystroke-sequence regression that uses the existing committed fixture)
+
+**Files to modify:**
+- `typer-core/src/lib.rs` — drop the deleted module declarations and re-exports
+- `typer-core/src/sender.rs` — drop `send_chunk` and `chunk_text` (no chunking in v2); keep `run_send`, `send_char`, `tap_key`, `warmup_shift`, `clear_editor`, `send_ctrl_combo`. Add `start_offset: usize` parameter to `run_send` (skip the first N chars, used for resume per Q14).
+- `typer-core/src/event_source.rs` — already updated in v2-1 (Q12 fix lives here)
+- `typer-core/src/config.rs` — keep `EVENT_PAUSE_MS`, `MOD_HOLD_MS`, `MOD_HOLD_MIN_MS`, `WARMUP_SETTLE_MS`, `COUNTDOWN_SECS`, `DEFAULT_WARMUP_SHIFT`, `CLEAR_EDITOR_SETTLE_MS`. Drop `CHUNK_SIZE_LINES`, `CHUNK_VERIFY_SETTLE_MS`, `MAX_LINE_CHARS`, `SCROLL_*`, `VERIFY_PASS_THRESHOLD`, `PAGE_UP_INTER_MS`.
+- `typer-core/src/error.rs` — drop OCR-specific `TyperError` variants (anything with "Ocr", "Region", "Verify", "Scroll" in the name).
+- `typer-core/src/bin/typer.rs` — drop the `verify`, `scroll-test`, `send-chunk`, `delete-*` subcommands. Keep `send` and `calibrate` is gone (no region). Add `pause` / `resume` only if useful for CLI smoke (probably not needed; can resume via a `--start-offset` flag on `send`).
+
+**New: SendControl tri-state.** A new module `typer-core/src/control.rs`:
+```rust
+pub enum SendControl {
+    Running,
+    PauseRequested,
+    StopRequested,
+}
+pub struct SendControlFlag(Arc<AtomicU8>);
+// or Arc<Mutex<SendControl>> — whichever stays clean across the FFI boundary
+```
+Used in the `run_send` loop: at every char boundary, check the flag and break out cleanly emitting the right event.
+
+**Sidecar:** delete `src-tauri/binaries/ocr_helper-aarch64-apple-darwin` and `src-tauri/binaries/region_picker-aarch64-apple-darwin` plus their `src/` Swift sources. Update `src-tauri/binaries/README.md` to note both are removed.
+
+**Test count expectation:** roughly 140 → 60 (rough estimate; we lose ~30 fold/align/stitch tests, ~15 OCR/verify/scroll tests, ~20 chunked-send tests, ~5 keymap-edge tests stay, ~30 sender/event-source tests stay, plus new ~5 SendControl tests).
+
+**Definition of done:**
+- `cargo test --workspace` clean at the new lower count
+- `cargo clippy --workspace --all-targets -- -D warnings` clean
+- `cargo fmt --check` clean
+- `typer-core` re-exports trim to only what `src-tauri` will need (sender, event source, config, control, error)
+
+---
+
+## Phase v2-3 unpacked (src-tauri: strip OCR, add pause/resume)
+
+**Files / handlers to delete:**
+- All v1 commands except: `read_text_file`, `save_text`, `get_text`, `clear_text`, `check_permissions`, `open_settings_pane`, `log_*`, `open_log_dir`.
+- Specifically delete: `calibrate`, `get_region`, `clear_region`, `check_lines`, `verify_visible`, `scroll_verify`, `send_with_chunked_verify`, `continue_after_fail`, the v1 `stop_send`.
+- Region persistence module (`persist.rs` if it splits out — or just the region keys).
+
+**Files / handlers to add:**
+- `run_send(text, cfg, start_offset)` — drives the v2 loop using `typer_core::run_send`. Emits `send-progress` (throttled, every ~100 chars), `send-paused {position}`, `send-stopped {position}`, `send-complete {chars, duration_ms, skipped}`.
+- `pause_send()` — flip `SendControl` to `PauseRequested`.
+- `stop_send()` — flip `SendControl` to `StopRequested`.
+- `get_settings()` / `save_settings(cfg)` — read/write `<app_data_dir>/settings.json`. Schema: `{ event_pause_ms: u64, mod_hold_ms: u64, warmup_shift: bool, countdown_secs: u64 }`.
+- `check_permissions()` — drop `screen_recording` field from the response (Q12 means we no longer need it).
+
+**Tauri capabilities** (`src-tauri/capabilities/default.json`):
+- Drop the file-system region path entries
+- Drop dialog scopes if region_picker was using any
+- Keep dialog plugin (file-load), shell plugin (System Settings deep-link), log plugin
+- Result: narrower allowlist than v1
+
+**Tests:**
+- Drop integration smoke tests for the v1-only commands
+- Add integration smoke tests for `run_send` / `pause_send` / `stop_send` / `get_settings` / `save_settings`
+
+**Definition of done:**
+- `cargo test -p keystream` clean
+- All integration smoke tests cover the new tri-verb surface
+- Capabilities allowlist diff committed alongside the command changes
+
+---
+
+## Phase v2-4 unpacked (frontend rewrite for the locked v2 UI)
+
+**Design source:** [`v2-frontend-design.md`](v2-frontend-design.md). All locked answers are in the "Locked answers (2026-04-28)" section there.
+
+**State model:** the discriminated union `AppState` in v2-frontend-design.md "State machine" — `idle | sending | paused | stopped | done | countdown | settings`.
+
+**Pre-step:** revert the unstaged Skip/Continue countdown changes in `src/app/page.tsx` and `src/components/countdown-overlay.tsx` — those were v1 fail-and-retry plumbing that has no place in v2.
+
+**Implementation order** (matches the design doc's plan):
+1. Theme tokens + fonts (`globals.css`, `layout.tsx`, Tailwind 4 `@theme`)
+2. Sidebar component
+3. Main header (gates + Edit/Lock segmented switch)
+4. Text panel (gutter + content + active-line scanline)
+5. Action bar (status line + primary/secondary buttons)
+6. Countdown overlay (Fraunces numeral + ring)
+7. Settings page (sliders + checkboxes)
+8. `page.tsx` recomposition with the new state machine
+9. Test rewrite: drop v1 chunk/diff/fail tests; add v2 tests for action-bar state transitions, countdown timing, settings persistence, gate logic
+
+**IPC adapter note (transitional):** during v2-4 the `src-tauri/` may still be on v1 commands if v2-3 hasn't merged yet. If so, build a thin `lib/ipc-v2.ts` adapter that maps v1 events → v2 state transitions for development; swap to the v2 commands once v2-3 lands. If v2-3 ships before v2-4 starts, no adapter needed.
+
+**Definition of done:**
+- `pnpm typecheck` / `pnpm lint` clean
+- `pnpm test` covers the new state machine
+- `pnpm tauri:dev` boots and the UI renders
+- All 7 design-doc requirements (Send/Pause/Resume button, Stop, Edit/Lock, gates, active-line indicator, countdown on Send and Resume, status line) hand-tested against the running app
+
+---
+
+## Phase v2-5 unpacked (settings pane)
+
+**Backend already shipped in v2-3:** `get_settings` / `save_settings`.
+
+**Frontend:**
+- `settings-page.tsx` rendered when `AppState.mode === "settings"` (sidebar stays visible)
+- Four dials per Q13 with the values + helpers from `v2-frontend-design.md` "Region 4 — Settings page"
+- Persistence: debounced 300ms write on every change
+- Reset to defaults button: confirm? — design says no confirm, just an immediate reset
+- Helper text under each slider citing the AVD floor (7ms) and local floor (5ms) for `event_pause_ms`
+
+**Definition of done:**
+- Settings persist across app relaunch
+- Reset button restores Q13 defaults
+- All four dials reach their intended ranges and the current value renders in mono with units
+- `<app_data_dir>/settings.json` schema matches the v2-3 backend
+
+---
+
+## Phase v2-6 unpacked (polish + ship)
+
+**Visual:**
+- Empty-text-panel "Drop a file here, or click to load" state (drag-drop is bonus; click-to-focus is required)
+- Hover affordances on all rail items
+- Focus rings on Tab navigation through controls
+
+**Keyboard shortcuts:**
+- ⌘O — Load file
+- ⌘L — Toggle Edit/Lock
+- ⌘, — Open Settings
+- Enter — Send (when idle, gates pass)
+- Esc — Pause (during sending) or Stop (during paused) or Cancel countdown
+
+**Build & ship:**
+- `pnpm tauri:build` produces a signed-or-unsigned dmg (v1 was unsigned, v2 follows)
+- Re-run live-AVD smoke against the dmg-installed binary
+- Update `README.md` first-launch instructions for Accessibility-only permission grant
+- Draft release notes — header is "v2: byte-perfect typing, no OCR"
+
+**Definition of done:**
+- dmg builds clean
+- Fresh-Mac install workflow documented (Accessibility grant, the unsigned-Gatekeeper warning)
+- Release notes ready to publish
+
+---
+
+## Pre-existing work uncommitted
+
+`src/app/page.tsx` and `src/components/countdown-overlay.tsx` carry leftover Skip/Continue UX changes from a prior session. They're v1 plumbing for the fail-and-retry handshake — entirely obsolete in v2-4. **Revert these before starting v2-4.** Don't commit them.
