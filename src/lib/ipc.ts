@@ -1,16 +1,10 @@
 // Thin facade over Tauri IPC. All calls from React into the Rust shell and
 // Tauri plugins go through this file — components never import from
 // `@tauri-apps/*` directly. See .claude/rules/conventions.md "Import conventions".
-//
-// A future web version replaces this file with src/lib/api.ts (REST client)
-// and every React component keeps working.
 
 import { Channel, invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
-import type { Permissions, Region } from "@/lib/core/gates";
-
-export type { Permissions } from "@/lib/core/gates";
 
 // ---------------------------------------------------------------------------
 // Event bus (Rust → webview)
@@ -19,8 +13,6 @@ export type { Permissions } from "@/lib/core/gates";
 /**
  * Subscribe to a named Tauri event. Returns an `UnlistenFn` the caller must
  * invoke on cleanup (React components should call it from useEffect cleanup).
- * Wraps `@tauri-apps/api/event.listen` so components don't have to import it
- * directly (enforced by biome `noRestrictedImports`).
  */
 export async function listenTauriEvent<T = unknown>(
   event: string,
@@ -78,8 +70,7 @@ export type PickedFile = { path: string; name: string };
 
 /**
  * Open the OS file picker for a single text file. Returns the picked path
- * and its basename, or null if the user cancelled. The path is what the
- * OS handed back; the caller passes it to `readTextFile`.
+ * and its basename, or null if the user cancelled.
  */
 export async function pickTextFile(): Promise<PickedFile | null> {
   const picked = await openDialog({
@@ -94,149 +85,17 @@ export async function pickTextFile(): Promise<PickedFile | null> {
   return { path: picked, name };
 }
 
-/**
- * Load the contents of a text file at `path`. Backed by the
- * `read_text_file` Tauri command — canonicalizes, asserts regular file,
- * caps at 1 MiB, validates UTF-8.
- */
+/** Load the contents of a text file at `path`. Backend canonicalises and
+ * caps at 1 MiB. */
 export async function readTextFile(path: string): Promise<string> {
   return await invoke<string>("read_text_file", { path });
 }
 
 // ---------------------------------------------------------------------------
-// Region calibration (region_picker sidecar → Rust calibrate / get_region)
+// Text persistence
 // ---------------------------------------------------------------------------
 
-/**
- * Spawn the `region_picker` sidecar, wait for the user to drag a rectangle,
- * persist the region to the app data dir, and return it. Throws on sidecar
- * failure or user cancel.
- */
-export async function calibrate(): Promise<Region> {
-  return await invoke<Region>("calibrate");
-}
-
-/**
- * Read the saved region from the app data dir. Returns `null` if none has
- * been saved yet (normal state on first launch).
- */
-export async function getRegion(): Promise<Region | null> {
-  return await invoke<Region | null>("get_region");
-}
-
-/** Idempotent delete of the saved region. */
-export async function clearRegion(): Promise<void> {
-  await invoke("clear_region");
-}
-
-// ---------------------------------------------------------------------------
-// Line-length pre-check (Q8) — Rust check_lines command
-// ---------------------------------------------------------------------------
-
-export type OffendingLine = { line: number; length: number };
-export type CheckLinesResult = { ok: boolean; offending: OffendingLine[] };
-
-/**
- * Run the Q8 line-length pre-check against the given text. Backend hardcodes
- * `MAX_LINE_CHARS` from `typer_core::config` (80). Returns `{ ok, offending }`
- * with 1-indexed line numbers and Unicode-character lengths.
- */
-export async function checkLines(text: string): Promise<CheckLinesResult> {
-  return await invoke<CheckLinesResult>("check_lines", { text });
-}
-
-// ---------------------------------------------------------------------------
-// Chunked send-and-verify (Q7/Q9 loop) — typed Channel<SendEvent>
-// ---------------------------------------------------------------------------
-
-export type DiffKind = "Match" | "Mismatch" | "OcrDrop" | "OcrExtra";
-
-export type DiffLine = {
-  kind: DiffKind;
-  index: number;
-  sent: string | null;
-  seen: string | null;
-  charDiffs: number;
-};
-
-export type DiffStats = {
-  alignedLines: number;
-  matchingLines: number;
-  charDiffs: number;
-  totalChars: number;
-  dropped: number;
-  extra: number;
-  sentChars: number;
-  seenChars: number;
-};
-
-export type SendEvent =
-  | { event: "chunkStart"; data: { index: number; total: number; lines: string[] } }
-  | { event: "chunkPass"; data: { index: number } }
-  | { event: "chunkFail"; data: { index: number; stats: DiffStats; diff: DiffLine[] } }
-  | {
-      event: "sendComplete";
-      data: { total: number; passed: number; failed: number; skipped: number };
-    }
-  | { event: "sendCancelled"; data: { atChunk: number } };
-
-export type ContinueAction = "skip" | "stop" | "retry";
-
-/**
- * Construct a `Channel<SendEvent>` with the supplied handler wired to
- * `onmessage`. Returned channel is passed to `sendWithChunkedVerify` as the
- * `onEvent` argument. Hides Tauri's Channel constructor from the page.
- */
-export function createSendChannel(handler: (event: SendEvent) => void): Channel<SendEvent> {
-  const channel = new Channel<SendEvent>();
-  channel.onmessage = handler;
-  return channel;
-}
-
-/**
- * Drive the Q7/Q9 chunked send-and-verify loop. The backend streams
- * `SendEvent` payloads via `channel`; the promise resolves when the run
- * ends (complete / cancelled) or rejects on hard failure.
- */
-export async function sendWithChunkedVerify(
-  text: string,
-  channel: Channel<SendEvent>,
-): Promise<void> {
-  await invoke("send_with_chunked_verify", { text, onEvent: channel });
-}
-
-/** Ack a chunk-fail decision: skip / stop / retry (Q10). */
-export async function continueAfterFail(action: ContinueAction): Promise<void> {
-  await invoke("continue_after_fail", { action });
-}
-
-/** Cooperative cancel: flips the backend's atomic flag; the loop exits at
- * the next chunk boundary, emitting `sendCancelled`. */
-export async function stopSend(): Promise<void> {
-  await invoke("stop_send");
-}
-
-// ---------------------------------------------------------------------------
-// macOS permission probe + System Settings deep-link (task 42)
-// ---------------------------------------------------------------------------
-
-export type SettingsPane = "accessibility" | "screenRecording";
-
-/** Silent probe of Accessibility + Screen Recording grants. No prompt. */
-export async function checkPermissions(): Promise<Permissions> {
-  return await invoke<Permissions>("check_permissions");
-}
-
-/** Open the System Settings pane for the named privacy section. */
-export async function openSettingsPane(pane: SettingsPane): Promise<void> {
-  await invoke("open_settings_pane", { pane });
-}
-
-// ---------------------------------------------------------------------------
-// Text persistence (task 43) — last-loaded text survives app relaunch.
-// ---------------------------------------------------------------------------
-
-/** Persist text to the app data dir. Validated server-side at MAX_TEXT_BYTES. */
+/** Persist text to the app data dir. */
 export async function saveText(text: string): Promise<void> {
   await invoke("save_text", { text });
 }
@@ -249,4 +108,99 @@ export async function getText(): Promise<string | null> {
 /** Idempotent delete of the saved text. */
 export async function clearText(): Promise<void> {
   await invoke("clear_text");
+}
+
+// ---------------------------------------------------------------------------
+// macOS permissions probe + System Settings deep-link
+// ---------------------------------------------------------------------------
+
+export type Permissions = { accessibility: boolean };
+
+/** v2 only allows "accessibility"; backend rejects everything else. */
+export type SettingsPane = "accessibility";
+
+/** Silent probe of the Accessibility grant. No prompt. */
+export async function checkPermissions(): Promise<Permissions> {
+  return await invoke<Permissions>("check_permissions");
+}
+
+/** Open the System Settings pane for the named privacy section. */
+export async function openSettingsPane(pane: SettingsPane): Promise<void> {
+  await invoke("open_settings_pane", { pane });
+}
+
+// ---------------------------------------------------------------------------
+// User settings (Q13 four-dial config)
+// ---------------------------------------------------------------------------
+
+export type Settings = {
+  eventPauseMs: number;
+  modHoldMs: number;
+  warmupShift: boolean;
+  countdownSecs: number;
+};
+
+/** Read settings from disk. Returns defaults on first launch (file missing). */
+export async function getSettings(): Promise<Settings> {
+  return await invoke<Settings>("get_settings");
+}
+
+/** Write settings to disk. Backend persists to <app_data_dir>/settings.json. */
+export async function saveSettings(cfg: Settings): Promise<void> {
+  await invoke("save_settings", { cfg });
+}
+
+// ---------------------------------------------------------------------------
+// Send pipeline (Q14 tri-verb surface)
+// ---------------------------------------------------------------------------
+
+export type SendEvent =
+  | {
+      event: "sendComplete";
+      data: { charsTyped: number; skipped: number; durationMs: number };
+    }
+  | {
+      event: "sendPaused";
+      data: { position: number; charsTyped: number; durationMs: number };
+    }
+  | {
+      event: "sendStopped";
+      data: { position: number; charsTyped: number; durationMs: number };
+    };
+
+/** Construct a `Channel<SendEvent>` with the supplied handler wired. */
+export function createSendChannel(handler: (event: SendEvent) => void): Channel<SendEvent> {
+  const channel = new Channel<SendEvent>();
+  channel.onmessage = handler;
+  return channel;
+}
+
+/**
+ * Drive the v2 linear send loop. The backend types `text` into the focused
+ * editor starting from `startOffset` (a char index). On exit the backend
+ * emits exactly one `SendEvent` (sendComplete / sendPaused / sendStopped)
+ * via the channel and resolves the promise.
+ *
+ * Resume is just another `runSend` call with `startOffset = position` from
+ * the previous SendPaused event.
+ */
+export async function runSend(
+  text: string,
+  cfg: Settings,
+  startOffset: number,
+  channel: Channel<SendEvent>,
+): Promise<void> {
+  await invoke("run_send", { text, cfg, startOffset, onEvent: channel });
+}
+
+/** Cooperative pause: flips the backend's control flag to PauseRequested.
+ * The send loop halts at the next char boundary and emits SendPaused. */
+export async function pauseSend(): Promise<void> {
+  await invoke("pause_send");
+}
+
+/** Cooperative stop: flips the backend's control flag to StopRequested.
+ * The send loop halts and the frontend resets to position 0. */
+export async function stopSend(): Promise<void> {
+  await invoke("stop_send");
 }

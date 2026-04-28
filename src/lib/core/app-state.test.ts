@@ -1,0 +1,172 @@
+import { describe, expect, it } from "vitest";
+import { type AppState, COUNTDOWN_SECS, reduce } from "./app-state";
+
+describe("reduce", () => {
+  it("idle → countdown(send) on sendClicked", () => {
+    const next = reduce({ mode: "idle" }, { kind: "sendClicked", totalChars: 100 });
+    expect(next.mode).toBe("countdown");
+    if (next.mode === "countdown") {
+      expect(next.remaining).toBe(COUNTDOWN_SECS);
+      expect(next.intent).toBe("send");
+      expect(next.resumeOffset).toBe(0);
+    }
+  });
+
+  it("countdownTick decrements while remaining > 0", () => {
+    const start: AppState = {
+      mode: "countdown",
+      remaining: 3,
+      intent: "send",
+      resumeOffset: 0,
+    };
+    const next = reduce(start, { kind: "countdownTick" });
+    expect(next.mode).toBe("countdown");
+    if (next.mode === "countdown") {
+      expect(next.remaining).toBe(2);
+    }
+  });
+
+  it("countdownTick is a no-op when remaining=0", () => {
+    const start: AppState = {
+      mode: "countdown",
+      remaining: 0,
+      intent: "send",
+      resumeOffset: 0,
+    };
+    const next = reduce(start, { kind: "countdownTick" });
+    expect(next).toEqual(start);
+  });
+
+  it("countdownFire transitions to sending starting at resumeOffset", () => {
+    const start: AppState = {
+      mode: "countdown",
+      remaining: 0,
+      intent: "resume",
+      resumeOffset: 50,
+    };
+    const next = reduce(start, { kind: "countdownFire", nowMs: 1_000 });
+    expect(next.mode).toBe("sending");
+    if (next.mode === "sending") {
+      expect(next.charsTyped).toBe(50);
+      expect(next.startedAtMs).toBe(1_000);
+    }
+  });
+
+  it("countdownCancelled returns to idle", () => {
+    const start: AppState = {
+      mode: "countdown",
+      remaining: 2,
+      intent: "send",
+      resumeOffset: 0,
+    };
+    const next = reduce(start, { kind: "countdownCancelled" });
+    expect(next.mode).toBe("idle");
+  });
+
+  it("sending → done on ipcSendComplete", () => {
+    const start: AppState = {
+      mode: "sending",
+      charsTyped: 0,
+      totalChars: 100,
+      startedAtMs: 0,
+    };
+    const next = reduce(start, {
+      kind: "ipcSendComplete",
+      chars: 100,
+      skipped: 2,
+      durationMs: 4_000,
+    });
+    expect(next.mode).toBe("done");
+    if (next.mode === "done") {
+      expect(next.chars).toBe(100);
+      expect(next.skipped).toBe(2);
+      expect(next.durationMs).toBe(4_000);
+    }
+  });
+
+  it("sending → paused on ipcSendPaused preserves position", () => {
+    const start: AppState = {
+      mode: "sending",
+      charsTyped: 0,
+      totalChars: 100,
+      startedAtMs: 0,
+    };
+    const next = reduce(start, {
+      kind: "ipcSendPaused",
+      position: 42,
+      charsTyped: 40,
+      durationMs: 1_000,
+    });
+    expect(next.mode).toBe("paused");
+    if (next.mode === "paused") {
+      expect(next.position).toBe(42);
+      expect(next.charsTyped).toBe(40);
+      expect(next.totalChars).toBe(100);
+    }
+  });
+
+  it("paused → countdown(resume) carries position as resumeOffset", () => {
+    const start: AppState = {
+      mode: "paused",
+      position: 42,
+      charsTyped: 40,
+      totalChars: 100,
+      durationMs: 1_000,
+    };
+    const next = reduce(start, { kind: "resumeClicked" });
+    expect(next.mode).toBe("countdown");
+    if (next.mode === "countdown") {
+      expect(next.intent).toBe("resume");
+      expect(next.resumeOffset).toBe(42);
+    }
+  });
+
+  it("paused → stopped immediately on stopClicked (no loop running)", () => {
+    const start: AppState = {
+      mode: "paused",
+      position: 42,
+      charsTyped: 40,
+      totalChars: 100,
+      durationMs: 1_000,
+    };
+    const next = reduce(start, { kind: "stopClicked" });
+    expect(next.mode).toBe("stopped");
+    if (next.mode === "stopped") {
+      expect(next.charsTyped).toBe(40);
+      expect(next.totalChars).toBe(100);
+    }
+  });
+
+  it("done → idle on doneTimeout", () => {
+    const start: AppState = { mode: "done", chars: 100, skipped: 0, durationMs: 4_000 };
+    const next = reduce(start, { kind: "doneTimeout" });
+    expect(next.mode).toBe("idle");
+  });
+
+  it("openSettings is only allowed from idle", () => {
+    expect(reduce({ mode: "idle" }, { kind: "openSettings" }).mode).toBe("settings");
+    const sending: AppState = {
+      mode: "sending",
+      charsTyped: 0,
+      totalChars: 10,
+      startedAtMs: 0,
+    };
+    expect(reduce(sending, { kind: "openSettings" }).mode).toBe("sending");
+  });
+
+  it("closeSettings returns to idle", () => {
+    const next = reduce({ mode: "settings" }, { kind: "closeSettings" });
+    expect(next.mode).toBe("idle");
+  });
+
+  it("countdown → idle on stopClicked (cancels pre-send)", () => {
+    const start: AppState = {
+      mode: "countdown",
+      remaining: 2,
+      intent: "send",
+      resumeOffset: 0,
+    };
+    const next = reduce(start, { kind: "stopClicked" });
+    expect(next.mode).toBe("idle");
+  });
+});

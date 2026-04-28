@@ -4,29 +4,25 @@ import { describe, expect, it, vi } from "vitest";
 import { CountdownOverlay } from "./countdown-overlay";
 
 describe("CountdownOverlay", () => {
-  it("renders nothing when state is null", () => {
-    const { container } = render(<CountdownOverlay state={null} onCancel={vi.fn()} />);
-    expect(container.firstChild).toBeNull();
+  it("renders the remaining number when > 0", () => {
+    render(<CountdownOverlay remaining={2} totalSecs={3} onCancel={vi.fn()} />);
+    expect(screen.getByText("2")).toBeInTheDocument();
   });
 
-  it("renders the remaining numeral while counting down", () => {
-    render(<CountdownOverlay state={{ remaining: 3 }} onCancel={vi.fn()} />);
-    expect(screen.getByText("3")).toBeInTheDocument();
-    expect(screen.getByText(/Click into the target window now/)).toBeInTheDocument();
-  });
-
-  it("renders 'GO' when remaining is 0", () => {
-    render(<CountdownOverlay state={{ remaining: 0 }} onCancel={vi.fn()} />);
+  it("renders 'GO' when remaining = 0", () => {
+    render(<CountdownOverlay remaining={0} totalSecs={3} onCancel={vi.fn()} />);
     expect(screen.getByText("GO")).toBeInTheDocument();
   });
 
-  it("Cancel button is auto-focused on mount and fires onCancel when clicked", async () => {
-    const user = userEvent.setup();
+  it("Cancel button invokes onCancel", async () => {
     const onCancel = vi.fn();
-    render(<CountdownOverlay state={{ remaining: 2 }} onCancel={onCancel} />);
-    const cancel = screen.getByRole("button", { name: "Cancel" });
-    expect(cancel).toHaveFocus();
-    await user.click(cancel);
-    expect(onCancel).toHaveBeenCalledTimes(1);
+    render(<CountdownOverlay remaining={2} totalSecs={3} onCancel={onCancel} />);
+    await userEvent.click(screen.getByRole("button", { name: /cancel/i }));
+    expect(onCancel).toHaveBeenCalledOnce();
+  });
+
+  it("focus lands on the Cancel button on mount", () => {
+    render(<CountdownOverlay remaining={2} totalSecs={3} onCancel={vi.fn()} />);
+    expect(screen.getByRole("button", { name: /cancel/i })).toHaveFocus();
   });
 });

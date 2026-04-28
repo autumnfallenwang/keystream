@@ -1,26 +1,90 @@
 @import "tailwindcss";
 
+/* v2 palette — "Terminal Atelier" calibrated dark theme.
+   See docs/v2-frontend-design.md "Palette" section. */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --bg-canvas: #0a0a0b;
+  --bg-rail: #08080a;
+  --bg-elevated: #14141a;
+  --bg-hover: #1c1c25;
+  --bg-active: #2a2a36;
+
+  --hairline: #1f1f28;
+  --hairline-soft: #161620;
+  --hairline-strong: #2a2a36;
+
+  --fg-primary: #f5f5fa;
+  --fg-secondary: #b4b4c4;
+  --fg-tertiary: #6a6a82;
+  --fg-quaternary: #44445c;
+
+  --accent: #6a86ff;
+  --accent-hover: #7e98ff;
+  --accent-press: #5570e8;
+  --accent-glow: rgba(106, 134, 255, 0.125);
+
+  --ok: #5cd4a0;
+  --warn: #ffb347;
+  --alert: #ff6a8a;
+
+  --foreground: var(--fg-primary);
+  --background: var(--bg-canvas);
 }
 
 @theme inline {
+  --color-canvas: var(--bg-canvas);
+  --color-rail: var(--bg-rail);
+  --color-elevated: var(--bg-elevated);
+  --color-bg-hover: var(--bg-hover);
+  --color-bg-active: var(--bg-active);
+
+  --color-hairline: var(--hairline);
+  --color-hairline-soft: var(--hairline-soft);
+  --color-hairline-strong: var(--hairline-strong);
+
+  --color-fg: var(--fg-primary);
+  --color-fg-secondary: var(--fg-secondary);
+  --color-fg-tertiary: var(--fg-tertiary);
+  --color-fg-quaternary: var(--fg-quaternary);
+
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-accent-press: var(--accent-press);
+  --color-accent-glow: var(--accent-glow);
+
+  --color-ok: var(--ok);
+  --color-warn: var(--warn);
+  --color-alert: var(--alert);
+
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+  --font-code: var(--font-jetbrains-mono);
+  --font-display: var(--font-fraunces);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+/* Active-line scanline animation. The scanline is a thin horizontal
+   accent-colored bar that sweeps across the currently-typing line.
+   When paused, the page sets animation-play-state: paused via a CSS
+   class so the bar freezes mid-sweep. */
+@keyframes scanline {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(100%);
   }
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--bg-canvas);
+  color: var(--fg-primary);
+  font-family: var(--font-geist-sans), system-ui, sans-serif;
+  letter-spacing: -0.005em;
+}
+
+button {
+  font-family: inherit;
 }

@@ -1,47 +1,35 @@
-// Pure send-progress text computation. Drives the bottom controls' status
-// label during a chunked send (task 39).
+// Status text shown in the main header status line during send/pause/
+// done/stopped. Pure formatting helper.
 
-import type { ChunkState } from "./chunks";
-
-export type SendCompletePayload = {
-  total: number;
-  passed: number;
-  failed: number;
-  skipped: number;
-};
+import type { AppState } from "./app-state";
 
 export type ProgressInputs = {
-  chunkStates: ChunkState[];
-  sending: boolean;
-  sendSummary: SendCompletePayload | null;
-  /** 0-indexed chunk where stop landed; rendered 1-indexed for the user. */
-  sendCancelledAt: number | null;
-  fallback: string; // idle text — gate-derived "Waiting on N gate(s)" / "Ready to send"
+  state: AppState;
+  /** Total chars in the source text. The state's snapshot may not have
+   * this populated for all modes, so we get it from the page directly. */
+  totalChars: number;
 };
 
-export function computeProgressText({
-  chunkStates,
-  sending,
-  sendSummary,
-  sendCancelledAt,
-  fallback,
-}: ProgressInputs): string {
-  if (sendCancelledAt !== null) {
-    const total = chunkStates.length;
-    return `Stopped at chunk ${sendCancelledAt + 1} / ${total}`;
+const fmtNum = (n: number) => n.toLocaleString("en-US");
+const fmtSecs = (ms: number) => (ms / 1000).toFixed(1);
+
+/**
+ * Returns the status string for the current state, or `null` when there
+ * is no status to show (idle / countdown / settings — those modes use
+ * the gate strip instead).
+ */
+export function computeStatusText(inputs: ProgressInputs): string | null {
+  const { state, totalChars } = inputs;
+  switch (state.mode) {
+    case "sending":
+      return `Typing ${fmtNum(state.charsTyped)} / ${fmtNum(totalChars)} chars`;
+    case "paused":
+      return `⏸ Paused at ${fmtNum(state.charsTyped)} / ${fmtNum(state.totalChars)} chars · ${fmtSecs(state.durationMs)}s`;
+    case "done":
+      return `✓ Done · ${fmtNum(state.chars)} chars · ${fmtSecs(state.durationMs)}s`;
+    case "stopped":
+      return `⏹ Stopped at ${fmtNum(state.charsTyped)} / ${fmtNum(state.totalChars)} chars`;
+    default:
+      return null;
   }
-  if (sendSummary !== null) {
-    return `Done · ${sendSummary.passed}/${sendSummary.total} passed`;
-  }
-  if (sending) {
-    const total = chunkStates.length;
-    const completed = chunkStates.filter((s) => s === "pass" || s === "fail").length;
-    const inProgressIdx = chunkStates.indexOf("inProgress");
-    const pct = total > 0 ? Math.round((completed / total) * 100) : 0;
-    if (inProgressIdx >= 0) {
-      return `Chunk ${inProgressIdx + 1} / ${total} · ${pct}% done`;
-    }
-    return `${completed} / ${total} · ${pct}% done`;
-  }
-  return fallback;
 }

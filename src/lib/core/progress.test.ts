@@ -1,101 +1,68 @@
 import { describe, expect, it } from "vitest";
-import type { ChunkState } from "./chunks";
-import { computeProgressText } from "./progress";
+import type { AppState } from "./app-state";
+import { computeStatusText } from "./progress";
 
-const FALLBACK = "Waiting on 1 gate(s)";
-
-describe("computeProgressText", () => {
-  it("idle (no sending, no summary) returns the fallback", () => {
-    const text = computeProgressText({
-      chunkStates: [],
-      sending: false,
-      sendSummary: null,
-      sendCancelledAt: null,
-      fallback: FALLBACK,
-    });
-    expect(text).toBe(FALLBACK);
+describe("computeStatusText", () => {
+  it("returns null for idle (gates strip is shown instead)", () => {
+    expect(computeStatusText({ state: { mode: "idle" }, totalChars: 0 })).toBe(null);
   });
 
-  it("sending with one in-progress chunk reports 'Chunk N / total · X% done'", () => {
-    const chunkStates: ChunkState[] = ["pass", "inProgress", "untouched", "untouched"];
-    const text = computeProgressText({
-      chunkStates,
-      sending: true,
-      sendSummary: null,
-      sendCancelledAt: null,
-      fallback: FALLBACK,
-    });
-    expect(text).toBe("Chunk 2 / 4 · 25% done");
+  it("returns null while in countdown", () => {
+    const state: AppState = {
+      mode: "countdown",
+      remaining: 2,
+      intent: "send",
+      resumeOffset: 0,
+    };
+    expect(computeStatusText({ state, totalChars: 100 })).toBe(null);
   });
 
-  it("sending mid-state (no in-progress, just completed counts) reports 'C / total · X% done'", () => {
-    const chunkStates: ChunkState[] = ["pass", "pass", "untouched"];
-    const text = computeProgressText({
-      chunkStates,
-      sending: true,
-      sendSummary: null,
-      sendCancelledAt: null,
-      fallback: FALLBACK,
-    });
-    expect(text).toBe("2 / 3 · 67% done");
+  it("returns null in settings", () => {
+    expect(computeStatusText({ state: { mode: "settings" }, totalChars: 0 })).toBe(null);
   });
 
-  it("done reports 'Done · P/T passed'", () => {
-    const text = computeProgressText({
-      chunkStates: ["pass", "pass", "fail"],
-      sending: false,
-      sendSummary: { total: 3, passed: 2, failed: 1, skipped: 0 },
-      sendCancelledAt: null,
-      fallback: FALLBACK,
-    });
-    expect(text).toBe("Done · 2/3 passed");
+  it("formats sending with comma-separated digits", () => {
+    const state: AppState = {
+      mode: "sending",
+      charsTyped: 4_521,
+      totalChars: 15_017,
+      startedAtMs: 0,
+    };
+    expect(computeStatusText({ state, totalChars: 15_017 })).toBe("Typing 4,521 / 15,017 chars");
   });
 
-  it("done with all skipped via cancellation still reports the summary", () => {
-    const text = computeProgressText({
-      chunkStates: ["pass", "untouched", "untouched"],
-      sending: false,
-      sendSummary: { total: 3, passed: 1, failed: 0, skipped: 2 },
-      sendCancelledAt: null,
-      fallback: FALLBACK,
-    });
-    expect(text).toBe("Done · 1/3 passed");
+  it("formats paused with elapsed seconds", () => {
+    const state: AppState = {
+      mode: "paused",
+      position: 4_521,
+      charsTyped: 4_521,
+      totalChars: 15_017,
+      durationMs: 18_400,
+    };
+    expect(computeStatusText({ state, totalChars: 15_017 })).toBe(
+      "⏸ Paused at 4,521 / 15,017 chars · 18.4s",
+    );
   });
 
-  it("sendCancelledAt set returns 'Stopped at chunk N / total' (1-indexed)", () => {
-    const chunkStates: ChunkState[] = ["pass", "pass", "stopped", "untouched"];
-    const text = computeProgressText({
-      chunkStates,
-      sending: false,
-      sendSummary: null,
-      sendCancelledAt: 2,
-      fallback: FALLBACK,
-    });
-    expect(text).toBe("Stopped at chunk 3 / 4");
+  it("formats done with chars and elapsed seconds", () => {
+    const state: AppState = {
+      mode: "done",
+      chars: 15_017,
+      skipped: 0,
+      durationMs: 60_200,
+    };
+    expect(computeStatusText({ state, totalChars: 15_017 })).toBe("✓ Done · 15,017 chars · 60.2s");
   });
 
-  it("sendCancelledAt takes precedence over fallback even when sending=false", () => {
-    const text = computeProgressText({
-      chunkStates: ["stopped"],
-      sending: false,
-      sendSummary: null,
-      sendCancelledAt: 0,
-      fallback: FALLBACK,
-    });
-    expect(text).toBe("Stopped at chunk 1 / 1");
-  });
-
-  it("sendCancelledAt takes precedence over sendSummary if both are somehow set", () => {
-    // Backend never emits both per session (it's either SendComplete OR
-    // SendCancelled). Defensive ordering pin: a future refactor that
-    // swaps the branch order would fail this test.
-    const text = computeProgressText({
-      chunkStates: ["pass", "stopped", "untouched"],
-      sending: false,
-      sendSummary: { total: 3, passed: 1, failed: 0, skipped: 0 },
-      sendCancelledAt: 1,
-      fallback: FALLBACK,
-    });
-    expect(text).toBe("Stopped at chunk 2 / 3");
+  it("formats stopped with the partial position", () => {
+    const state: AppState = {
+      mode: "stopped",
+      charsTyped: 4_521,
+      totalChars: 15_017,
+      durationMs: 18_400,
+    };
+    expect(computeStatusText({ state, totalChars: 15_017 })).toBe(
+      "⏹ Stopped at 4,521 / 15,017 chars",
+    );
   });
 });
