@@ -307,10 +307,7 @@ fn do_send(args: SendArgs) -> Result<()> {
 
     let cfg = SendCfg::default();
     let scroll_cfg = ScrollCfg::default();
-    let src = RealEventSource::new(
-        CGEventSourceStateID::CombinedSessionState,
-        CGEventTapLocation::Session,
-    )?;
+    let src = RealEventSource::session_default()?;
 
     let mut aggregate: Vec<DiffStats> = Vec::new();
     for run in 1..=runs {
@@ -369,10 +366,7 @@ fn do_send_chunk(
 
     let region = load_region(&legacy_config_path()?)?;
     let cfg = SendCfg::default();
-    let src = RealEventSource::new(
-        CGEventSourceStateID::CombinedSessionState,
-        CGEventTapLocation::Session,
-    )?;
+    let src = RealEventSource::session_default()?;
 
     do_countdown(countdown);
     warmup_shift(&src, &cfg)?;
@@ -416,6 +410,10 @@ fn do_scroll_test(countdown: u64, pause_ms: u64) {
     // Uses raw core-graphics directly because methods 2/3 need
     // CGEventFlags (Fn). The library's EventSource trait deliberately
     // doesn't expose flags (locked decision Q2). This is dev-only code.
+    // Q12 note: this probe deliberately keeps `CombinedSessionState` —
+    // it's a historical Q5 scroll-method probe testing whether
+    // CGEventFlags reach AVD, NOT a typing path. Q12's `Private` source
+    // applies only to the typing pipeline (RealEventSource).
     let source = match CGEventSource::new(CGEventSourceStateID::CombinedSessionState) {
         Ok(s) => s,
         Err(()) => {
@@ -506,10 +504,7 @@ where
     F: FnOnce(&RealEventSource, &SendCfg) -> Result<()>,
 {
     let cfg = SendCfg::default();
-    let src = RealEventSource::new(
-        CGEventSourceStateID::CombinedSessionState,
-        CGEventTapLocation::Session,
-    )?;
+    let src = RealEventSource::session_default()?;
 
     println!(
         "\n=== delete probe: {name} ===\n\

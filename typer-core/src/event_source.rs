@@ -25,16 +25,20 @@ impl RealEventSource {
         Ok(Self { source, tap_loc })
     }
 
-    /// Convenience constructor for the session default:
-    /// `CombinedSessionState` with `Session` tap location. Matches the
-    /// Q2 / PoC behavior and lets callers outside `typer-core` (Tauri
-    /// commands, CLI shim) construct an event source without pulling
-    /// in `core-graphics` as a direct dep.
+    /// Convenience constructor for the session default: `Private` source
+    /// state with `Session` tap location. Locked decision Q12 — the
+    /// `CombinedSessionState` default mixes our injected events with the
+    /// user's physical keyboard state and corrupts modifier tracking under
+    /// sustained typing, surfacing as intermittent shift-drops on AVD/RDP
+    /// targets. `Private` gives our injection an isolated modifier-state
+    /// machine. Validated 0 / 45,051 chars across 3 × 15k-char runs on
+    /// AVD/Notepad — see [`docs/poc2-results.md`].
+    ///
+    /// Lets callers outside `typer-core` (Tauri commands, CLI shim)
+    /// construct an event source without pulling in `core-graphics` as a
+    /// direct dep.
     pub fn session_default() -> Result<Self> {
-        Self::new(
-            CGEventSourceStateID::CombinedSessionState,
-            CGEventTapLocation::Session,
-        )
+        Self::new(CGEventSourceStateID::Private, CGEventTapLocation::Session)
     }
 }
 

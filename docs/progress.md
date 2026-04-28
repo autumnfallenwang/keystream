@@ -17,7 +17,7 @@ v1 phase summary:
 |---|---|---|---|
 | v2-0 | poc2 study — method survey, AVD validation, speed-floor characterization | done | poc2-results.md committed; sandwich+Private validated 0/45,051 chars on AVD |
 | v2-design | UI design locked (Q12/Q13/Q14 in design-plan.md; v2-frontend-design.md) | done | both docs reviewed; aesthetic + state machine + all 7 open questions resolved |
-| v2-1 | Apply Q12 fix in shipped code | next | one constant changed; `cargo test --workspace` still 140/140; manual AVD smoke clean |
+| v2-1 | Apply Q12 fix in shipped code | done | event_source.rs::session_default uses Private; CLI routed through session_default; 140/140 still passing; clippy + fmt clean. Manual AVD smoke pending operator. |
 | v2-2 | Strip OCR + chunking from `typer-core/`; add Q14 SendControl tri-state | pending | see "Phase v2-2 unpacked" below |
 | v2-3 | Strip OCR + chunking from `src-tauri/`; add pause/resume commands | pending | see "Phase v2-3 unpacked" below |
 | v2-4 | Rewrite frontend for the locked v2 UI | pending | see "Phase v2-4 unpacked" below |
@@ -31,20 +31,13 @@ References:
 
 ## What's Next
 
-**Phase v2-1 — Apply the Q12 fix in shipped code.**
+**Phase v2-2 — Strip OCR + chunking from `typer-core/`; add Q14 SendControl tri-state.**
 
-1. Edit `typer-core/src/event_source.rs::session_default()`:
-   ```rust
-   // before
-   CGEventSourceStateID::CombinedSessionState
-   // after
-   CGEventSourceStateID::Private
-   ```
-2. `cargo test --workspace` — expect 140/140 still passing (event shape unchanged).
-3. `pnpm tauri:build` and re-run a short manual smoke against AVD with the production binary. Eyeball the typed output for shift-drops; expect zero.
-4. Commit: `fix(typer-core): use CGEventSourceStateID::Private to eliminate AVD shift-drops (Q12)`.
+See "Phase v2-2 unpacked" below for the file-level plan. High-level: delete `ocr.rs`, `verify.rs`, `align.rs`, `fold.rs`, `stitch.rs`, `scroll.rs`, `region.rs`. Drop `send_chunk`/`chunk_text` from `sender.rs`. Add `start_offset` parameter to `run_send`. Replace the v1 `AtomicBool` cancel flag with the Q14 `SendControl` tri-state. Update tests. Expect test count to drop from 140 to ~60.
 
-After v2-1 is in main, the OCR removal in v2-2 can proceed — at that point we expect test counts to drop substantially as the OCR-related code and tests are removed together.
+After v2-2, v2-3 will strip the matching surface from `src-tauri/`.
+
+**Pending operator action from v2-1:** the manual AVD smoke against the production binary. Cheap to run once you have AVD up: `pnpm tauri:build`, install `Keystream.app`, load `docs/poc/samples/code_corpus.txt`, send. Expect 0 chunk failures with the Q12 fix in place.
 
 ---
 
