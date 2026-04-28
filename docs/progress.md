@@ -114,10 +114,12 @@ Every regression invariant from `rules/testing.md` has an explicit task: sender 
 
 ## What's Next
 
-**Task 47 — live-AVD smoke** (runbook ready, operator run pending).
+**Apply the v2 keystroke fix from poc2.** During the live-AVD smoke (task 47) the operator surfaced intermittent shift-drops. A round-2 PoC investigation followed; full results at [`docs/poc2-results.md`](poc2-results.md). The locked fix is a one-line change in `typer-core/src/event_source.rs::session_default()`: `CGEventSourceStateID::CombinedSessionState` → `CGEventSourceStateID::Private`. Validated 0/45,051 chars across 3×15k runs on AVD/Notepad.
 
-Runbook at [`docs/runbooks/live-avd-smoke.md`](runbooks/live-avd-smoke.md). Placeholder section in `docs/lessons.md` for the run record. After a successful operator run + lessons.md update, task 47 → done and **Phase 4 is fully complete**. v1 ships.
+Steps once we apply it:
+1. Edit `typer-core/src/event_source.rs::session_default()` per above.
+2. `cargo test --workspace` — should still be 140/140 (event shape unchanged).
+3. `pnpm tauri:build` and re-run the live-AVD smoke against the production binary.
+4. Mark task 47 done in this file.
 
-If the smoke surfaces issues, follow the runbook's failure paths — OCR misreads flow back as `typer-core/src/fold.rs` entries; genuine typing regressions are bugs (never "fix" sender to match OCR); focus-drift / window-misalignment issues are operator-side.
-
-After v1 ships, **Phase 5** (UI polish, settings surface, keyboard shortcuts) and **Phase 6** (auto-rollback retry per Q11, auto-wrap long lines, multi-profile, cross-platform) are the next plan-blocks.
+After that, **Phase 5** (UI polish, settings surface, keyboard shortcuts) and **Phase 6** (auto-rollback retry per Q11, auto-wrap long lines, multi-profile, cross-platform) are the next plan-blocks.

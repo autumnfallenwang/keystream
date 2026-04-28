@@ -38,6 +38,14 @@ src-tauri/WixTools/
 # README). Ignore the one cargo generates during local sanity builds.
 docs/poc/typer/Cargo.lock
 
+# poc2 round-2 experiment harness — same arrangement.
+poc2/typer2/Cargo.lock
+poc2/typer2/target/
+poc2/results/
+# AVD screenshots are operator-local experimental captures (large + may
+# show VM contents). Conclusions live in docs/poc2-results.md instead.
+poc2/screenshots/
+
 # ---------- Tauri bundler output ----------
 src-tauri/target/release/bundle/
 

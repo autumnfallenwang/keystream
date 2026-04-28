@@ -52,8 +52,20 @@ Both `Ctrl+Z once` and `Ctrl+Z × 5` cleanly removed the test block in AVD + Not
 
 During the `delete-ctrl-z-five` probe the operator observed a brief `#` character flash in the editor before disappearing. Most likely cause: the editor's undo implementation momentarily re-renders a character during the rapid-fire Ctrl+Z sequence (undo replays the typed chars in reverse, and at ~50ms between presses the render pipeline can show a transient glyph). Not caused by our keystroke stream; not seen in the other four probes. Documented here so a future observer doesn't mistake it for residue.
 
-## Phase 4 lessons
+## 2026-04 · poc2 — keystroke injection method (full study at `docs/poc2-results.md`)
 
-### YYYY-MM-DD · Phase 4 live-AVD smoke (TBD — operator run pending)
+### 2026-04-28 · Use `CGEventSourceStateID::Private`, not `CombinedSessionState`, for sustained typing
 
-**Status: awaiting operator run.** Runbook at [`docs/runbooks/live-avd-smoke.md`](runbooks/live-avd-smoke.md). Replace this stub after a successful run with: run date, AVD client + version, target editor, accuracy %, char_diffs aggregate, any anomalies. Counts only — never the typed content.
+The default `Combined` source mixes our injected events with the user's physical keyboard state. Under sustained typing (validated at 15,017 chars + 3 × 15k AVD runs) it corrupts modifier tracking and intermittently drops shift on shifted chars. `Private` source gives our injection an isolated modifier-state machine and the bug disappears. **One-line change in `typer-core/src/event_source.rs::session_default()`.** Confirmed clean on local TextEdit and AVD/Notepad at 0/45,051 chars across 3 runs. See `docs/poc2-results.md` for the full method matrix and AVD screenshots.
+
+### 2026-04-28 · The 2026-04-20 "no `CGEventFlags`" rule still stands — re-confirmed against AVD
+
+A poc2 hypothesis suggested the prior "flags don't survive RDP" finding might've been a Unicode-mode artifact. It was not. Tested every `setFlags(CGEventFlagShift)` permutation (`Combined`/`Private` source × `Session`/`HID` tap, plus enigo's full stack) against AVD: every variant produced **100% catastrophic shift-drops** — every shifted char came out as its unshifted base. The keycode-sandwich recipe (Q2) is genuinely the only RDP-survivable shape.
+
+### 2026-04-28 · Speed floor — `EVENT_PAUSE_MS=10` has 2× margin; floor is 7ms on AVD, 5ms locally
+
+Sweeping `event_pause_ms` against the locked Method A: local Mac stays clean down to 5ms; AVD stays clean down to 7ms. Below the floor the failure mode is shift *latching* (stays on across chars), not dropping. Default 10ms keeps a 30% margin over AVD floor. Don't lower the default without a re-sweep on the target client.
+
+### 2026-04-28 · AppleScript `keystroke` collapses on AVD at scale (~15k chars)
+
+Tested as an alternative injection path. Works locally at any size. On AVD: small inputs (~250 chars) clean and fast; **at 15k chars loses ~50% of input** even with explicit per-line `delay`. RDP can't keep up with AppleScript's batched event firehose regardless of throttling. Not a viable alternative to CGEvent for our use case. Documented so future readers don't re-explore this branch.
