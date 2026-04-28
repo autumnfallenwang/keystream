@@ -1,45 +1,35 @@
 #![cfg(target_os = "macos")]
-//! typer-core — keystroke sender and OCR verify loop for Keystream.
+//! typer-core — keystroke sender for Keystream (v2).
 //!
-//! Ported from `docs/poc/typer/src/main.rs` in task 7. Preserves locked
-//! decisions Q1–Q6 (see `docs/design-plan.md`):
+//! Linear send loop, no OCR. Locked decisions:
 //!
 //! - Q1: CGEvent virtual keycodes, never unicode injection
 //! - Q2: cliclick shift recipe (plain keycodes, no `CGEventFlags`)
 //! - Q3: shift warmup before the first character
-//! - Q4: OCR via Swift `ocr_helper` sidecar (Apple Vision)
-//! - Q5: scroll via PageUp/PageDown keycodes (not Ctrl+Home)
-//! - Q6: LCS line alignment for sent-vs-seen diff
+//! - Q12: `CGEventSourceStateID::Private` source — eliminates AVD
+//!   shift-drops. See `docs/poc2-results.md`.
+//! - Q14: `SendControl` tri-state for pause/resume/stop. Resume is
+//!   `run_send` with a `start_offset`, not a separate command.
+//!
+//! v1's OCR pipeline (verify, align, fold, stitch, scroll, region,
+//! lint, diff) was retired in v2-2; see git history before this commit
+//! and `docs/poc2-results.md` for the rationale.
 
-pub mod align;
 pub mod config;
-pub mod diff;
+pub mod control;
 pub mod error;
 pub mod event_source;
-pub mod fold;
 pub mod keymap;
-pub mod lint;
-pub mod ocr;
-pub mod region;
-pub mod scroll;
 pub mod sender;
-pub mod stitch;
-pub mod verify;
 
 pub use config::{
-    CHUNK_SIZE_LINES, CHUNK_VERIFY_SETTLE_MS, CLEAR_EDITOR_SETTLE_MS, COUNTDOWN_SECS,
-    DEFAULT_WARMUP_SHIFT, EVENT_PAUSE_MS, MAX_LINE_CHARS, MOD_HOLD_MIN_MS, MOD_HOLD_MS,
-    PAGE_UP_INTER_MS, SCROLL_MAX_PAGES, SCROLL_SETTLE_MS, SCROLL_TO_TOP_PAGE_UPS,
-    VERIFY_PASS_THRESHOLD, WARMUP_SETTLE_MS,
+    CLEAR_EDITOR_SETTLE_MS, COUNTDOWN_SECS, DEFAULT_WARMUP_SHIFT, EVENT_PAUSE_MS, MOD_HOLD_MIN_MS,
+    MOD_HOLD_MS, WARMUP_SETTLE_MS,
 };
-pub use diff::{DiffKind, DiffLine, DiffStats};
+pub use control::{SendControl, SendControlFlag};
 pub use error::{Result, TyperError};
 pub use event_source::{EventSource, RealEventSource};
-pub use lint::{check_lines, CheckLinesResult, OffendingLine};
-pub use region::Region;
-pub use scroll::{run_scroll_verify, ScrollCfg};
 pub use sender::{
-    chunk_text, clear_editor, run_send, send_char, send_chunk, send_ctrl_combo, tap_key,
-    warmup_shift, SendCfg,
+    clear_editor, run_send, send_char, send_ctrl_combo, tap_key, warmup_shift, ExitReason, SendCfg,
+    SendOutcome,
 };
-pub use verify::{diff_against_tail, run_verify_diff, verify_visible};

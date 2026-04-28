@@ -10,21 +10,6 @@ pub enum TyperError {
     #[error("keyboard event: could not create CGEvent for keycode {keycode}")]
     KeyboardEventFailed { keycode: u16 },
 
-    #[error("region config missing at {path}")]
-    RegionNotFound { path: String },
-
-    #[error("region config malformed at {path}: {reason}")]
-    RegionMalformed { path: String, reason: String },
-
-    #[error("command '{cmd}' failed to spawn: {reason}")]
-    CommandSpawn { cmd: String, reason: String },
-
-    #[error("command '{cmd}' exited with status {status}")]
-    CommandNonZero { cmd: String, status: String },
-
-    #[error("OCR JSON malformed: {0}")]
-    OcrMalformed(String),
-
     #[error("I/O error on {path}: {source}")]
     Io {
         path: String,

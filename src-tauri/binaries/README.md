@@ -1,74 +1,44 @@
-# Swift sidecars
+# Sidecar binaries (v2: empty)
 
-Two sidecar binaries bundled into the Keystream `.app`:
+Empty in v2. Both v1 sidecars (`ocr_helper`, `region_picker`) were
+removed in Phase v2-2 along with the rest of the OCR pipeline.
 
-- `ocr_helper-<triple>` — Apple Vision OCR. Reads a PNG path, emits JSON
-  `{ lines: [{ text, confidence, x, y, width, height }], joined }` to
-  stdout. Proven at ~98.3% accuracy on the PoC stress run.
-- `region_picker-<triple>` — full-screen overlay. User drags a
-  rectangle; prints `x y w h` (in screencapture coordinates, Y from top)
-  to stdout and exits.
+History: v1 bundled two Swift sidecars into the Keystream `.app`:
 
-## Provenance rule (rules/security.md)
+- `ocr_helper-<triple>` — Apple Vision OCR. Reads a PNG, emits JSON
+  with `{ lines, joined }`. Used by the per-chunk verify loop.
+- `region_picker-<triple>` — full-screen overlay for region calibration.
+  Used by the `calibrate` Tauri command.
 
-Every binary here must be built from the source in
-`src-tauri/binaries/src/` and committed in the same commit as its
-source. Don't commit a binary without its source or a source change
-without the rebuilt binary.
+Both became unnecessary when poc2 validated that
+`CGEventSourceStateID::Private` makes the keystroke sender byte-perfect
+on AVD (see `docs/poc2-results.md`). With reliable input, OCR-verify is
+solving a problem that no longer exists.
 
-Sidecars must never reach the network.
+## If a future feature needs OCR or region selection
 
-## Supported targets
-
-v1 ships arm64 macOS only (`aarch64-apple-darwin`). Future:
-`x86_64-apple-darwin`, universal binaries (`lipo -create ...`).
-
-## Rebuild
-
-From repo root:
+Restore from git history. The last commit with both sidecars is the
+v1 freeze (commit before the v2-2 strip). Either:
 
 ```sh
-swiftc -O src-tauri/binaries/src/ocr_helper.swift \
-  -o src-tauri/binaries/ocr_helper-aarch64-apple-darwin
-
-swiftc -O src-tauri/binaries/src/region_picker.swift \
-  -o src-tauri/binaries/region_picker-aarch64-apple-darwin
+git show <hash>:src-tauri/binaries/src/ocr_helper.swift > src-tauri/binaries/src/ocr_helper.swift
+git show <hash>:src-tauri/binaries/ocr_helper-aarch64-apple-darwin \
+    > src-tauri/binaries/ocr_helper-aarch64-apple-darwin
+chmod +x src-tauri/binaries/ocr_helper-aarch64-apple-darwin
 ```
 
-## Smoke-test
-
-```sh
-# ocr_helper against the committed stress-run PNG. Expected: 30 lines
-# (matches docs/poc/results/stress1_ocr.json exactly).
-./src-tauri/binaries/ocr_helper-aarch64-apple-darwin \
-  docs/poc/results/stress1_avd.png | jq '.lines | length'
-
-# region_picker — opens full-screen overlay. Esc to cancel. Drag a
-# rectangle to print "x y w h" to stdout and exit.
-./src-tauri/binaries/region_picker-aarch64-apple-darwin
-```
-
-## Tauri wiring (task 23)
-
-Tauri 2 expects sidecars named `<name>-<target-triple>` on disk and
-referenced unsuffixed in `tauri.conf.json`:
+Then re-add to `tauri.conf.json`:
 
 ```json
-"bundle": {
-  "externalBin": ["binaries/ocr_helper", "binaries/region_picker"]
-}
+"bundle": { "externalBin": ["binaries/ocr_helper"] }
 ```
 
-Task 23 adds this declaration and writes the `calibrate` Tauri command
-that spawns `region_picker`.
+Same procedure for `region_picker`.
 
-## Permissions
+## Provenance rule (still applies if you bring sidecars back)
 
-On first launch, macOS Gatekeeper will warn that these binaries are
-unsigned. v1 ships unsigned (per CLAUDE.md "Unsigned binaries in v1");
-signing is future work.
-
-`ocr_helper` reads local PNGs and needs no special permissions.
-`region_picker` renders a full-screen overlay and captures drag input
-— macOS may request Accessibility or Input Monitoring permission on
-first interactive use.
+Per `rules/security.md`: every committed binary in this directory must
+be built from the source in `src-tauri/binaries/src/` and committed in
+the same commit. Don't commit a binary without its source or a source
+change without the rebuilt binary. Sidecars must never reach the
+network.
