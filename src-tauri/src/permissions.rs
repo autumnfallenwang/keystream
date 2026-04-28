@@ -1,9 +1,12 @@
-//! macOS permission probe + System Settings deep-link (task 42).
+//! macOS permission probe + System Settings deep-link.
 //!
-//! Two stable Apple APIs reached via `extern "C"`:
+//! v2 only needs Accessibility (to post CGEvents). Screen Recording was
+//! a v1 OCR-pipeline requirement; with poc2's Q12 fix typing is byte-
+//! perfect and OCR-verify is gone, so the screen-recording grant is no
+//! longer relevant.
+//!
+//! Reached via `extern "C"`:
 //! - `AXIsProcessTrusted()` — Accessibility (ApplicationServices, since 10.9).
-//! - `CGPreflightScreenCaptureAccess()` — Screen Recording (CoreGraphics,
-//!   since 10.15). Silent preflight — no prompt.
 //!
 //! Per `rules/security.md`: this command is read-only — no permissions to
 //! escalate, no Tauri allowlist surface beyond a safe enum-validated
@@ -17,45 +20,32 @@ use serde::Serialize;
 #[serde(rename_all = "camelCase")]
 pub struct Permissions {
     pub accessibility: bool,
-    pub screen_recording: bool,
 }
 
 #[link(name = "ApplicationServices", kind = "framework")]
-extern "C" {
+unsafe extern "C" {
     fn AXIsProcessTrusted() -> bool;
 }
 
-#[link(name = "CoreGraphics", kind = "framework")]
-extern "C" {
-    fn CGPreflightScreenCaptureAccess() -> bool;
-}
-
-/// Probe both required permissions. Silent — neither call prompts.
+/// Probe Accessibility. Silent — does not prompt.
 #[tauri::command]
 pub fn check_permissions() -> Permissions {
-    // SAFETY: both are stable Apple APIs that take no arguments and return
-    // a primitive `bool`. No memory ownership or threading concerns.
+    // SAFETY: stable Apple API, takes no arguments, returns a primitive
+    // `bool`. No memory ownership or threading concerns.
     let accessibility = unsafe { AXIsProcessTrusted() };
-    let screen_recording = unsafe { CGPreflightScreenCaptureAccess() };
-    log::info!(
-        "check_permissions: accessibility={accessibility} screenRecording={screen_recording}"
-    );
-    Permissions {
-        accessibility,
-        screen_recording,
-    }
+    log::info!("check_permissions: accessibility={accessibility}");
+    Permissions { accessibility }
 }
 
 /// Open the System Settings pane for the named privacy section. The pane
 /// name is validated against a small allowlist to defeat URL injection.
+/// v2 only allows "accessibility" — "screenRecording" is rejected since
+/// the screen-recording grant is no longer needed.
 #[tauri::command]
 pub fn open_settings_pane(pane: String) -> Result<(), String> {
     let url = match pane.as_str() {
         "accessibility" => {
             "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility"
-        }
-        "screenRecording" => {
-            "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture"
         }
         other => return Err(format!("unknown settings pane: {other}")),
     };
@@ -77,5 +67,22 @@ mod tests {
     fn open_settings_pane_rejects_empty_string() {
         let err = open_settings_pane("".into()).unwrap_err();
         assert!(err.contains("unknown settings pane"), "got: {err}");
+    }
+
+    #[test]
+    fn open_settings_pane_rejects_screen_recording() {
+        // v1 used to accept "screenRecording"; v2 removed the grant
+        // requirement and tightens the allowlist accordingly.
+        let err = open_settings_pane("screenRecording".into()).unwrap_err();
+        assert!(err.contains("unknown settings pane"), "got: {err}");
+    }
+
+    #[test]
+    fn permissions_serializes_with_camel_case_field() {
+        let p = Permissions {
+            accessibility: true,
+        };
+        let json = serde_json::to_value(p).unwrap();
+        assert_eq!(json["accessibility"], true);
     }
 }

@@ -19,7 +19,7 @@ v1 phase summary:
 | v2-design | UI design locked (Q12/Q13/Q14 in design-plan.md; v2-frontend-design.md) | done | both docs reviewed; aesthetic + state machine + all 7 open questions resolved |
 | v2-1 | Apply Q12 fix in shipped code | done | event_source.rs::session_default uses Private; CLI routed through session_default; 140/140 still passing; clippy + fmt clean. Manual AVD smoke pending operator. |
 | v2-2 | Strip OCR + chunking from `typer-core/`; add Q14 SendControl tri-state | done | OCR/verify/align/fold/stitch/scroll/region/lint/diff modules + Swift sidecars deleted; control.rs added (5 tests); sender.rs takes SendControlFlag + start_offset, returns SendOutcome; CLI slimmed to just `send` (4 tests); 24 typer-core tests passing; clippy + fmt clean. **src-tauri intentionally broken until v2-3.** |
-| v2-3 | Strip OCR + chunking from `src-tauri/`; add pause/resume commands | pending | see "Phase v2-3 unpacked" below |
+| v2-3 | Strip OCR + chunking from `src-tauri/`; add pause/resume commands | done | calibrate/lint/verify modules deleted; settings.rs added (6 tests); send_state.rs wraps SendControlFlag; send.rs has new run_send/pause_send/stop_send + SendComplete/SendPaused/SendStopped events; permissions drops screenRecording; lib.rs + Cargo.toml + tauri.conf.json + capabilities trimmed (no shell plugin / sidecars). 68 workspace tests passing; clippy + fmt clean. **Frontend (`src/`) still uses v1 IPC; v2-4 rewrites it.** |
 | v2-4 | Rewrite frontend for the locked v2 UI | pending | see "Phase v2-4 unpacked" below |
 | v2-5 | Settings pane (Q13) — 4 dials + persistence | pending | see "Phase v2-5 unpacked" below |
 | v2-6 | Polish + ship | pending | dmg builds; first-launch on a clean Mac works; release notes drafted |
@@ -31,13 +31,18 @@ References:
 
 ## What's Next
 
-**Phase v2-3 — Strip OCR + chunking from `src-tauri/`; add the Q14 tri-verb command surface.**
+**Phase v2-4 — Rewrite the frontend for the locked v2 UI.**
 
-See "Phase v2-3 unpacked" below for the file-level plan. High-level: delete the v1 OCR-related Tauri commands (`calibrate`, `get_region`, `clear_region`, `check_lines`, `verify_visible`, `scroll_verify`, `send_with_chunked_verify`, `continue_after_fail`). Replace v1 `stop_send` with the Q14 tri-verb surface (`run_send` with `start_offset`, `pause_send`, `stop_send`). Add `get_settings` / `save_settings`. Drop `screenRecording` from the permissions probe. Trim `tauri.conf.json` `externalBin`. Restore `cargo test --workspace` to passing.
+See "Phase v2-4 unpacked" below for the file-level plan. The backend command surface is now stable: `run_send(text, cfg, start_offset, on_event)`, `pause_send()`, `stop_send()`, `get_settings()`, `save_settings(cfg)`, plus the unchanged file-load / persistence / logging / permissions surfaces. SendEvent variants the frontend will consume:
+- `sendComplete { charsTyped, skipped, durationMs }`
+- `sendPaused { position, charsTyped, durationMs }`
+- `sendStopped { position, charsTyped, durationMs }`
 
-**v2-2 left `src-tauri/` in a known-broken state by design.** v2-3 fixes it.
+**SendProgress decision (recorded for v2-4):** `run_send` does not emit progress events mid-loop in v2-3. `typer_core::run_send` doesn't expose a progress callback. The frontend computes a deterministic progress bar from `start_time × event_pause_ms × total_chars` after the Send moment. Real callback-driven SendProgress is a v2-3-polish follow-up — out of scope for v2-3.
 
-**Pending operator action from v2-1:** the manual AVD smoke against the production binary remains pending until v2-3 ships (we can't `pnpm tauri:build` until `src-tauri/` compiles).
+**Pre-step before v2-4:** revert the unstaged `src/app/page.tsx` and `src/components/countdown-overlay.tsx` changes. They're v1 fail-and-retry plumbing that v2-4 obsoletes.
+
+**Pending operator action from v2-1:** the manual AVD smoke against the production binary. Now unblocked: `pnpm tauri:build` works again. (The bundled webview will surface IPC errors until v2-4 lands, but the typing pipeline itself can be exercised via the CLI: `cargo run -p typer-core --bin typer -- send --file docs/poc/samples/code_corpus.txt --countdown 5`.)
 
 ---
 

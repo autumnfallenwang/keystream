@@ -1,6 +1,6 @@
 [package]
 name = "keystream"
-description = "Keystream — keystroke sender with OCR-based verification for virtual desktops"
+description = "Keystream — keystroke sender for virtual desktops"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -26,6 +26,5 @@ open = "5"
 tauri = { version = "2.10.3" }
 tauri-plugin-dialog = "2"
 tauri-plugin-log = "2"
-tauri-plugin-shell = "2"
-tokio = { version = "1", features = ["sync", "time"] }
+tokio = { version = "1", features = ["rt-multi-thread"] }
 typer-core = { path = "../typer-core" }

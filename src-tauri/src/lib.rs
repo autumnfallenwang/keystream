@@ -1,14 +1,12 @@
-pub mod calibrate;
 pub mod file_io;
 mod json_log;
-pub mod lint;
 pub mod log_commands;
 pub mod permissions;
 pub mod persist;
 pub mod send;
 mod send_state;
+pub mod settings;
 pub mod validation;
-pub mod verify;
 
 use std::path::PathBuf;
 
@@ -48,7 +46,6 @@ pub fn run() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
-        .plugin(tauri_plugin_shell::init())
         .setup(|app| {
             use tauri::Manager;
             app.manage(send_state::SendState::default());
@@ -59,21 +56,17 @@ pub fn run() {
             log_commands::log_warn,
             log_commands::log_error,
             log_commands::open_log_dir,
-            calibrate::calibrate,
-            calibrate::get_region,
-            calibrate::clear_region,
             file_io::read_text_file,
-            lint::check_lines,
             permissions::check_permissions,
             permissions::open_settings_pane,
             persist::save_text,
             persist::get_text,
             persist::clear_text,
-            send::send_with_chunked_verify,
-            send::continue_after_fail,
+            settings::get_settings,
+            settings::save_settings,
+            send::run_send,
+            send::pause_send,
             send::stop_send,
-            verify::verify_visible,
-            verify::scroll_verify,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

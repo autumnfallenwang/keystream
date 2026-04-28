@@ -7,13 +7,6 @@
   ],
   "permissions": [
     "core:default",
-    "dialog:default",
-    {
-      "identifier": "shell:allow-execute",
-      "allow": [
-        { "name": "binaries/region_picker", "sidecar": true, "args": true },
-        { "name": "binaries/ocr_helper", "sidecar": true, "args": true }
-      ]
-    }
+    "dialog:default"
   ]
 }
