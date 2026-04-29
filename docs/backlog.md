@@ -36,25 +36,25 @@ Rows below are listed newest-first within each type.
 **Where:** `src/components/file-explorer.tsx`, `src/lib/core/file-tree.ts::isTextFile`, `src/app/page.tsx::handleSelectFile`, plus a new `<BinaryFileWarning>` component in the main panel area.
 **Observed:** Q18 currently blocks non-allowlist files (PNG, MP3, .db, etc.) at the row level — they render dimmed and inert. User wants VSCode-style behavior: every row is clickable, the app tries to read it as text, and if the contents aren't valid UTF-8, surface a clear warning view inside the main panel with a "← Back" button. Linux text files often have no extension at all, so the allowlist over-blocks.
 **Locked under:** Q20 in `design-plan.md` (supersedes Q18's allowlist gate).
-**Status:** done
+**Status:** done — 1070603
 
 ### D-11 — Sidebar sections need separator rules between them
 **Where:** `src/components/sidebar.tsx`.
 **Observed:** Top action rows, the file-explorer section, and the bottom Settings/version block all sit in the sidebar without visual separation. The footer block already has `border-t border-hairline-soft` — the explorer section above it has no equivalent above-line.
 **Proposed:** Add hairline separators between sidebar sections so the structure reads at a glance.
-**Status:** done
+**Status:** done — 1070603
 
 ### D-10 — File/folder section in sidebar needs a section header with collapse
 **Where:** `src/components/sidebar.tsx`, `src/components/file-explorer.tsx`.
 **Observed:** The file-explorer area sits directly below the action rows with no section header. Other sidebars (Settings) use eyebrows. Q18 mentions a root-name eyebrow inside FileExplorer but it only appears once a folder is loaded, and there's no collapse affordance for the whole section.
 **Proposed:** Promote the explorer to a real sidebar section with a fixed header label (e.g. "Explorer") and a chevron that collapses the entire content. Distinct from per-folder collapse inside the tree.
-**Status:** done
+**Status:** done — 1070603
 
 ### D-09 — After Open file (single file), show that filename in the explorer area
 **Where:** `src/components/sidebar.tsx`, `src/components/file-explorer.tsx`, `src/app/page.tsx::handleLoadFile`.
 **Observed:** When the user uses **Open file…** for a single file (no folder context), the explorer area still shows "No folder loaded." The file is loaded into the panel but the sidebar doesn't reflect it — there's no way to confirm at a glance which file is currently active.
 **Proposed:** When a single file is loaded (no folder), render a single-row indicator in the explorer area showing just that filename, with the same active-edge styling as a selected tree row.
-**Status:** done
+**Status:** done — 1070603
 
 ### D-08 — VSCode-style file explorer sidebar
 **Where:** `src/components/sidebar.tsx`, plus new `src/components/explorer/` directory and new Rust `pick_folder` + `read_folder_tree` commands.
