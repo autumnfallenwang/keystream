@@ -11,6 +11,9 @@ function defaults(overrides: Partial<SidebarProps> = {}): SidebarProps {
     onOpenSettings: vi.fn(),
     inSettings: false,
     appVersion: "0.1.0",
+    onResize: vi.fn(),
+    onResizeCommit: vi.fn(),
+    currentWidthPx: 260,
     ...overrides,
   };
 }
@@ -89,5 +92,16 @@ describe("Sidebar", () => {
     render(<Sidebar {...defaults({ onOpenSettings })} />);
     await userEvent.click(screen.getByRole("button", { name: /settings/i }));
     expect(onOpenSettings).toHaveBeenCalledOnce();
+  });
+
+  it("Q19: renders the resize handle", () => {
+    render(<Sidebar {...defaults()} />);
+    expect(screen.getByTestId("sidebar-resize-handle")).toBeInTheDocument();
+  });
+
+  it("Q19: aside uses --sidebar-width CSS var for its width", () => {
+    const { container } = render(<Sidebar {...defaults()} />);
+    const aside = container.querySelector("aside");
+    expect(aside?.style.width).toBe("var(--sidebar-width)");
   });
 });

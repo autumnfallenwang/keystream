@@ -33,11 +33,13 @@
   --background: var(--bg-canvas);
 }
 
-/* Q15 UI scale. Lives on html (not :root) so Tailwind 4's theme
-   token processing doesn't strip it. The ThemeProvider also calls
-   `style.setProperty("--font-scale", ...)` on documentElement. */
+/* Q15 UI scale + Q19 sidebar width. Lives on html (not :root) so
+   Tailwind 4's theme token processing doesn't strip it. The
+   ThemeProvider also writes both via
+   `style.setProperty(...)` on documentElement. */
 html {
   --font-scale: 1;
+  --sidebar-width: 260px;
 }
 
 /* Theme overrides — applied to <html> by ThemeProvider via class.

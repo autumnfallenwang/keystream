@@ -1,6 +1,7 @@
 "use client";
 
 import { ChevronLeft, Palette, Sliders, Wrench } from "lucide-react";
+import { ResizeHandle } from "./resize-handle";
 import { SidebarEyebrow, SidebarRow } from "./sidebar-row";
 
 export type SettingsTab = "appearance" | "timing" | "advanced";
@@ -10,6 +11,12 @@ export type SettingsSidebarProps = {
   onTabChange: (next: SettingsTab) => void;
   onBack: () => void;
   appVersion: string;
+  /** Q19 — live update during drag. */
+  onResize: (px: number) => void;
+  /** Q19 — commit on mouseup or double-click reset. */
+  onResizeCommit: (px: number) => void;
+  /** Q19 — current width in px, used as drag-offset anchor. */
+  currentWidthPx: number;
 };
 
 export function SettingsSidebar({
@@ -17,9 +24,15 @@ export function SettingsSidebar({
   onTabChange,
   onBack,
   appVersion,
+  onResize,
+  onResizeCommit,
+  currentWidthPx,
 }: SettingsSidebarProps) {
   return (
-    <aside className="flex w-[260px] shrink-0 flex-col border-r border-hairline bg-rail">
+    <aside
+      className="relative flex shrink-0 flex-col border-r border-hairline bg-rail"
+      style={{ width: "var(--sidebar-width)" }}
+    >
       <div className="pb-4 pt-7">
         <SidebarRow icon={<ChevronLeft size={16} />} onClick={onBack}>
           Back to text
@@ -56,6 +69,8 @@ export function SettingsSidebar({
           v{appVersion}
         </p>
       </div>
+
+      <ResizeHandle onResize={onResize} onCommit={onResizeCommit} currentPx={currentWidthPx} />
     </aside>
   );
 }

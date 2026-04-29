@@ -1,10 +1,11 @@
 "use client";
 
-// Side-effect-only component (Q15). Reads the user's appearance prefs
-// from props and applies them to <html>:
+// Side-effect-only component (Q15 + Q19). Reads the user's appearance
+// prefs and sidebar width from props and applies them to <html>:
 //   - palette + mode → swaps the `theme-<profile>-<mode>` class on
 //     :root (or clears it for the bare Atelier-dark base)
 //   - font scale → sets the `--font-scale` CSS var on :root
+//   - sidebar width → sets the `--sidebar-width` CSS var on :root
 // When `mode === "system"`, listens to the OS color-scheme media query
 // and re-applies live. Renders nothing.
 
@@ -18,9 +19,12 @@ import {
 
 const MEDIA_QUERY = "(prefers-color-scheme: dark)";
 
-type Props = { appearance: AppearanceCfg };
+type Props = {
+  appearance: AppearanceCfg;
+  sidebarWidthPx: number;
+};
 
-export function ThemeProvider({ appearance }: Props): null {
+export function ThemeProvider({ appearance, sidebarWidthPx }: Props): null {
   useEffect(() => {
     const mql =
       typeof window === "undefined" || typeof window.matchMedia !== "function"
@@ -40,6 +44,7 @@ export function ThemeProvider({ appearance }: Props): null {
         root.classList.add(targetClass);
       }
       root.style.setProperty("--font-scale", String(appearance.fontSize));
+      root.style.setProperty("--sidebar-width", `${sidebarWidthPx}px`);
     };
 
     apply();
@@ -51,7 +56,7 @@ export function ThemeProvider({ appearance }: Props): null {
     const handle = () => apply();
     mql.addEventListener("change", handle);
     return () => mql.removeEventListener("change", handle);
-  }, [appearance.profile, appearance.mode, appearance.fontSize]);
+  }, [appearance.profile, appearance.mode, appearance.fontSize, sidebarWidthPx]);
 
   return null;
 }

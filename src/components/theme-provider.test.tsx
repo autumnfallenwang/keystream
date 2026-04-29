@@ -43,6 +43,7 @@ afterEach(() => {
   // Reset <html> after each test.
   for (const cls of ALL_CLASSES) document.documentElement.classList.remove(cls);
   document.documentElement.style.removeProperty("--font-scale");
+  document.documentElement.style.removeProperty("--sidebar-width");
 });
 
 describe("ThemeProvider — class application", () => {
@@ -50,7 +51,7 @@ describe("ThemeProvider — class application", () => {
 
   it("applies no class for atelier+dark (the bare base)", () => {
     const appearance: AppearanceCfg = { profile: "atelier", mode: "dark", fontSize: 1.0 };
-    render(<ThemeProvider appearance={appearance} />);
+    render(<ThemeProvider appearance={appearance} sidebarWidthPx={260} />);
     for (const cls of ALL_CLASSES) {
       expect(document.documentElement.classList.contains(cls)).toBe(false);
     }
@@ -58,22 +59,22 @@ describe("ThemeProvider — class application", () => {
 
   it("applies theme-solarized-dark for solarized+dark", () => {
     const appearance: AppearanceCfg = { profile: "solarized", mode: "dark", fontSize: 1.0 };
-    render(<ThemeProvider appearance={appearance} />);
+    render(<ThemeProvider appearance={appearance} sidebarWidthPx={260} />);
     expect(document.documentElement.classList.contains("theme-solarized-dark")).toBe(true);
   });
 
   it("applies theme-nord-light for nord+light", () => {
     const appearance: AppearanceCfg = { profile: "nord", mode: "light", fontSize: 1.0 };
-    render(<ThemeProvider appearance={appearance} />);
+    render(<ThemeProvider appearance={appearance} sidebarWidthPx={260} />);
     expect(document.documentElement.classList.contains("theme-nord-light")).toBe(true);
   });
 
   it("clears prior theme classes when profile changes", () => {
     const initial: AppearanceCfg = { profile: "solarized", mode: "dark", fontSize: 1.0 };
     const next: AppearanceCfg = { profile: "nord", mode: "dark", fontSize: 1.0 };
-    const { rerender } = render(<ThemeProvider appearance={initial} />);
+    const { rerender } = render(<ThemeProvider appearance={initial} sidebarWidthPx={260} />);
     expect(document.documentElement.classList.contains("theme-solarized-dark")).toBe(true);
-    rerender(<ThemeProvider appearance={next} />);
+    rerender(<ThemeProvider appearance={next} sidebarWidthPx={260} />);
     expect(document.documentElement.classList.contains("theme-solarized-dark")).toBe(false);
     expect(document.documentElement.classList.contains("theme-nord-dark")).toBe(true);
   });
@@ -83,21 +84,21 @@ describe("ThemeProvider — system mode follows matchMedia", () => {
   it("resolves to dark when OS prefers dark", () => {
     mockMatchMedia(true);
     const appearance: AppearanceCfg = { profile: "solarized", mode: "system", fontSize: 1.0 };
-    render(<ThemeProvider appearance={appearance} />);
+    render(<ThemeProvider appearance={appearance} sidebarWidthPx={260} />);
     expect(document.documentElement.classList.contains("theme-solarized-dark")).toBe(true);
   });
 
   it("resolves to light when OS prefers light", () => {
     mockMatchMedia(false);
     const appearance: AppearanceCfg = { profile: "solarized", mode: "system", fontSize: 1.0 };
-    render(<ThemeProvider appearance={appearance} />);
+    render(<ThemeProvider appearance={appearance} sidebarWidthPx={260} />);
     expect(document.documentElement.classList.contains("theme-solarized-light")).toBe(true);
   });
 
   it("re-applies when matchMedia change event fires", () => {
     const mql = mockMatchMedia(false);
     const appearance: AppearanceCfg = { profile: "nord", mode: "system", fontSize: 1.0 };
-    render(<ThemeProvider appearance={appearance} />);
+    render(<ThemeProvider appearance={appearance} sidebarWidthPx={260} />);
     expect(document.documentElement.classList.contains("theme-nord-light")).toBe(true);
     mql.dispatchChange(true);
     expect(document.documentElement.classList.contains("theme-nord-dark")).toBe(true);
@@ -107,14 +108,14 @@ describe("ThemeProvider — system mode follows matchMedia", () => {
   it("does not subscribe to matchMedia when mode is not system", () => {
     const mql = mockMatchMedia(true);
     const appearance: AppearanceCfg = { profile: "atelier", mode: "dark", fontSize: 1.0 };
-    render(<ThemeProvider appearance={appearance} />);
+    render(<ThemeProvider appearance={appearance} sidebarWidthPx={260} />);
     expect(mql.addEventListener).not.toHaveBeenCalled();
   });
 
   it("removes the matchMedia listener on unmount", () => {
     const mql = mockMatchMedia(true);
     const appearance: AppearanceCfg = { profile: "nord", mode: "system", fontSize: 1.0 };
-    const { unmount } = render(<ThemeProvider appearance={appearance} />);
+    const { unmount } = render(<ThemeProvider appearance={appearance} sidebarWidthPx={260} />);
     expect(mql.addEventListener).toHaveBeenCalled();
     unmount();
     expect(mql.removeEventListener).toHaveBeenCalled();
@@ -126,22 +127,40 @@ describe("ThemeProvider — font-scale CSS var", () => {
 
   it("sets --font-scale to 1 by default", () => {
     const appearance: AppearanceCfg = { profile: "atelier", mode: "dark", fontSize: 1.0 };
-    render(<ThemeProvider appearance={appearance} />);
+    render(<ThemeProvider appearance={appearance} sidebarWidthPx={260} />);
     expect(document.documentElement.style.getPropertyValue("--font-scale")).toBe("1");
   });
 
   it("sets --font-scale to 1.3 for Large", () => {
     const appearance: AppearanceCfg = { profile: "atelier", mode: "dark", fontSize: 1.3 };
-    render(<ThemeProvider appearance={appearance} />);
+    render(<ThemeProvider appearance={appearance} sidebarWidthPx={260} />);
     expect(document.documentElement.style.getPropertyValue("--font-scale")).toBe("1.3");
   });
 
   it("updates --font-scale when fontSize prop changes", () => {
     const initial: AppearanceCfg = { profile: "atelier", mode: "dark", fontSize: 1.0 };
     const next: AppearanceCfg = { profile: "atelier", mode: "dark", fontSize: 1.5 };
-    const { rerender } = render(<ThemeProvider appearance={initial} />);
+    const { rerender } = render(<ThemeProvider appearance={initial} sidebarWidthPx={260} />);
     expect(document.documentElement.style.getPropertyValue("--font-scale")).toBe("1");
-    rerender(<ThemeProvider appearance={next} />);
+    rerender(<ThemeProvider appearance={next} sidebarWidthPx={260} />);
     expect(document.documentElement.style.getPropertyValue("--font-scale")).toBe("1.5");
+  });
+});
+
+describe("ThemeProvider — Q19 sidebar-width CSS var", () => {
+  beforeEach(() => mockMatchMedia(true));
+
+  it("sets --sidebar-width to the sidebarWidthPx prop on mount", () => {
+    const appearance: AppearanceCfg = { profile: "atelier", mode: "dark", fontSize: 1.0 };
+    render(<ThemeProvider appearance={appearance} sidebarWidthPx={400} />);
+    expect(document.documentElement.style.getPropertyValue("--sidebar-width")).toBe("400px");
+  });
+
+  it("updates --sidebar-width when sidebarWidthPx prop changes", () => {
+    const appearance: AppearanceCfg = { profile: "atelier", mode: "dark", fontSize: 1.0 };
+    const { rerender } = render(<ThemeProvider appearance={appearance} sidebarWidthPx={260} />);
+    expect(document.documentElement.style.getPropertyValue("--sidebar-width")).toBe("260px");
+    rerender(<ThemeProvider appearance={appearance} sidebarWidthPx={500} />);
+    expect(document.documentElement.style.getPropertyValue("--sidebar-width")).toBe("500px");
   });
 });

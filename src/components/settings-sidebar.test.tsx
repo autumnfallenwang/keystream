@@ -9,6 +9,9 @@ function defaults(overrides: Partial<SettingsSidebarProps> = {}): SettingsSideba
     onTabChange: vi.fn(),
     onBack: vi.fn(),
     appVersion: "0.1.0",
+    onResize: vi.fn(),
+    onResizeCommit: vi.fn(),
+    currentWidthPx: 260,
     ...overrides,
   };
 }
@@ -84,5 +87,18 @@ describe("SettingsSidebar — interaction", () => {
     render(<SettingsSidebar {...defaults({ activeTab: startTab, onTabChange })} />);
     await userEvent.click(screen.getByRole("button", { name: labelMap[tab] }));
     expect(onTabChange).toHaveBeenCalledWith(tab);
+  });
+});
+
+describe("SettingsSidebar — Q19 resize", () => {
+  it("renders the resize handle", () => {
+    render(<SettingsSidebar {...defaults()} />);
+    expect(screen.getByTestId("sidebar-resize-handle")).toBeInTheDocument();
+  });
+
+  it("aside uses --sidebar-width CSS var for its width", () => {
+    const { container } = render(<SettingsSidebar {...defaults()} />);
+    const aside = container.querySelector("aside");
+    expect(aside?.style.width).toBe("var(--sidebar-width)");
   });
 });

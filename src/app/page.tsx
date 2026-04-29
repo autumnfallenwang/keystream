@@ -12,6 +12,7 @@ import { ThemeProvider } from "@/components/theme-provider";
 import { type AppEvent, type AppState, isTextLocked, reduce } from "@/lib/core/app-state";
 import { APPEARANCE_DEFAULT } from "@/lib/core/appearance";
 import { allGatesPass, computeGates } from "@/lib/core/gates";
+import { clampSidebarWidth, SIDEBAR_WIDTH_DEFAULT } from "@/lib/core/sidebar-width";
 import {
   checkPermissions,
   clearText,
@@ -42,6 +43,7 @@ const DEFAULT_SETTINGS: Settings = {
   warmupShift: true,
   countdownSecs: 3,
   appearance: APPEARANCE_DEFAULT,
+  sidebarWidthPx: SIDEBAR_WIDTH_DEFAULT,
 };
 
 const TextPanel = dynamic(() => import("@/components/text-panel").then((m) => m.TextPanel), {
@@ -329,10 +331,43 @@ export default function Home() {
 
   const handleSettingsReset = useCallback(() => {
     setSettings(DEFAULT_SETTINGS);
+    // Q19: also reset --sidebar-width directly so the visual snaps
+    // immediately, before the next ThemeProvider re-render.
+    document.documentElement.style.setProperty(
+      "--sidebar-width",
+      `${DEFAULT_SETTINGS.sidebarWidthPx}px`,
+    );
     void saveSettings(DEFAULT_SETTINGS).catch((err) => {
       void logWarning(`page: save_settings_failed: ${String(err)}`);
     });
   }, []);
+
+  // Q19: live update during sidebar drag — write directly to the CSS
+  // var on documentElement, bypassing React re-renders for 60fps
+  // smoothness. No state update yet.
+  const handleSidebarResize = useCallback((px: number) => {
+    document.documentElement.style.setProperty("--sidebar-width", `${px}px`);
+  }, []);
+
+  // Q19: commit on mouseup or double-click — clamp, update state,
+  // immediately re-apply the CSS var (the React re-render of
+  // ThemeProvider would do this too, but doing it here avoids any
+  // brief visual glitch), and persist via the existing debounce.
+  const handleSidebarCommit = useCallback(
+    (px: number) => {
+      const clamped = clampSidebarWidth(px);
+      const next = { ...settings, sidebarWidthPx: clamped };
+      setSettings(next);
+      document.documentElement.style.setProperty("--sidebar-width", `${clamped}px`);
+      if (settingsSaveRef.current !== null) clearTimeout(settingsSaveRef.current);
+      settingsSaveRef.current = setTimeout(() => {
+        void saveSettings(next).catch((err) => {
+          void logWarning(`page: save_settings_failed: ${String(err)}`);
+        });
+      }, 300);
+    },
+    [settings],
+  );
 
   const handleCountdownCancel = useCallback(() => {
     dispatch({ kind: "countdownCancelled" });
@@ -343,7 +378,7 @@ export default function Home() {
 
   return (
     <>
-      <ThemeProvider appearance={settings.appearance} />
+      <ThemeProvider appearance={settings.appearance} sidebarWidthPx={settings.sidebarWidthPx} />
       <div className="flex h-screen bg-canvas text-fg">
         {inSettings ? (
           <SettingsSidebar
@@ -351,6 +386,9 @@ export default function Home() {
             onTabChange={setSettingsTab}
             onBack={handleCloseSettings}
             appVersion={APP_VERSION}
+            onResize={handleSidebarResize}
+            onResizeCommit={handleSidebarCommit}
+            currentWidthPx={settings.sidebarWidthPx}
           />
         ) : (
           <Sidebar
@@ -360,6 +398,9 @@ export default function Home() {
             onOpenSettings={handleOpenSettings}
             inSettings={inSettings}
             appVersion={APP_VERSION}
+            onResize={handleSidebarResize}
+            onResizeCommit={handleSidebarCommit}
+            currentWidthPx={settings.sidebarWidthPx}
           />
         )}
         <main className="flex flex-1 flex-col overflow-hidden">

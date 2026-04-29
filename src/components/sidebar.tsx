@@ -2,6 +2,7 @@
 
 import { FileText, Settings, Trash2, Upload } from "lucide-react";
 import { useState } from "react";
+import { ResizeHandle } from "./resize-handle";
 import { SidebarEyebrow, SidebarRow } from "./sidebar-row";
 
 export type SidebarProps = {
@@ -11,6 +12,12 @@ export type SidebarProps = {
   onOpenSettings: () => void;
   inSettings: boolean;
   appVersion: string;
+  /** Q19 — live update during drag. */
+  onResize: (px: number) => void;
+  /** Q19 — commit on mouseup or double-click reset. */
+  onResizeCommit: (px: number) => void;
+  /** Q19 — current width in px, used as drag-offset anchor. */
+  currentWidthPx: number;
 };
 
 export function Sidebar({
@@ -20,6 +27,9 @@ export function Sidebar({
   onOpenSettings,
   inSettings,
   appVersion,
+  onResize,
+  onResizeCommit,
+  currentWidthPx,
 }: SidebarProps) {
   const [confirmingClear, setConfirmingClear] = useState(false);
 
@@ -32,7 +42,10 @@ export function Sidebar({
   };
 
   return (
-    <aside className="flex w-[260px] shrink-0 flex-col border-r border-hairline bg-rail">
+    <aside
+      className="relative flex shrink-0 flex-col border-r border-hairline bg-rail"
+      style={{ width: "var(--sidebar-width)" }}
+    >
       <div className="px-5 pb-4 pt-7">
         <h1 className="font-display text-[18px] font-medium tracking-tight text-fg">Keystream</h1>
       </div>
@@ -73,6 +86,8 @@ export function Sidebar({
           v{appVersion}
         </p>
       </div>
+
+      <ResizeHandle onResize={onResize} onCommit={onResizeCommit} currentPx={currentWidthPx} />
     </aside>
   );
 }

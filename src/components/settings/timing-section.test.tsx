@@ -9,6 +9,7 @@ const defaultSettings: Settings = {
   warmupShift: true,
   countdownSecs: 3,
   appearance: { profile: "atelier", mode: "system", fontSize: 1.0 },
+  sidebarWidthPx: 260,
 };
 
 function defaults(overrides: Partial<TimingSectionProps> = {}): TimingSectionProps {

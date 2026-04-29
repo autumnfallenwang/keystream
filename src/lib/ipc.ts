@@ -141,6 +141,7 @@ export type Settings = {
   warmupShift: boolean;
   countdownSecs: number;
   appearance: AppearanceCfg;
+  sidebarWidthPx: number;
 };
 
 /** Read settings from disk. Returns defaults on first launch (file missing). */

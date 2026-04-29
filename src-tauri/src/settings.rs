@@ -1,7 +1,8 @@
-//! User settings persistence (Q13 four-dial UI + Q15 appearance shell).
+//! User settings persistence (Q13 four-dial UI + Q15 appearance shell
+//! + Q19 sidebar width).
 //!
 //! Path: `<app_data_dir>/settings.json`. Schema is `SettingsCfg`. Read
-//! at startup; written on every change in the v2-5 / v2-7 settings UI.
+//! at startup; written on every change in the v2-5 / v2-7 / v2-9 UI.
 //!
 //! Defaults are pulled from `typer_core::config` constants — single
 //! source of truth. The settings UI in the frontend mirrors these values.
@@ -12,6 +13,15 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager};
 use typer_core::config::{COUNTDOWN_SECS, DEFAULT_WARMUP_SHIFT, EVENT_PAUSE_MS, MOD_HOLD_MS};
+
+/// Q19 default sidebar width in pixels. Range 180..=600 enforced
+/// frontend-side via `clampSidebarWidth`. Matches the
+/// `SIDEBAR_WIDTH_DEFAULT` constant in `src/lib/core/sidebar-width.ts`.
+const DEFAULT_SIDEBAR_WIDTH_PX: u64 = 260;
+
+fn default_sidebar_width_px() -> u64 {
+    DEFAULT_SIDEBAR_WIDTH_PX
+}
 
 /// Q15 appearance config — palette profile, light/dark/system mode,
 /// proportional UI scale. The frontend is the source of truth for valid
@@ -41,6 +51,8 @@ impl Default for AppearanceCfg {
 ///
 /// `appearance` is `#[serde(default)]` so v2-5 settings.json files
 /// (without the field) load cleanly with default appearance applied.
+/// `sidebar_width_px` is `#[serde(default = ...)]` for the same
+/// back-compat reason — v2-7-era files load with 260 applied.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SettingsCfg {
@@ -50,6 +62,8 @@ pub struct SettingsCfg {
     pub countdown_secs: u64,
     #[serde(default)]
     pub appearance: AppearanceCfg,
+    #[serde(default = "default_sidebar_width_px")]
+    pub sidebar_width_px: u64,
 }
 
 impl Default for SettingsCfg {
@@ -60,6 +74,7 @@ impl Default for SettingsCfg {
             warmup_shift: DEFAULT_WARMUP_SHIFT,
             countdown_secs: COUNTDOWN_SECS,
             appearance: AppearanceCfg::default(),
+            sidebar_width_px: DEFAULT_SIDEBAR_WIDTH_PX,
         }
     }
 }
@@ -102,7 +117,7 @@ pub fn get_settings(app: AppHandle) -> Result<SettingsCfg, String> {
     let path = settings_path(&app)?;
     let cfg = load_at(&path)?;
     log::info!(
-        "get_settings: event_pause_ms={} mod_hold_ms={} warmup_shift={} countdown_secs={} appearance.profile={} appearance.mode={} appearance.font_size={}",
+        "get_settings: event_pause_ms={} mod_hold_ms={} warmup_shift={} countdown_secs={} appearance.profile={} appearance.mode={} appearance.font_size={} sidebar_width_px={}",
         cfg.event_pause_ms,
         cfg.mod_hold_ms,
         cfg.warmup_shift,
@@ -110,6 +125,7 @@ pub fn get_settings(app: AppHandle) -> Result<SettingsCfg, String> {
         cfg.appearance.profile,
         cfg.appearance.mode,
         cfg.appearance.font_size,
+        cfg.sidebar_width_px,
     );
     Ok(cfg)
 }
@@ -119,7 +135,7 @@ pub fn save_settings(app: AppHandle, cfg: SettingsCfg) -> Result<(), String> {
     let path = settings_path(&app)?;
     save_at(&path, &cfg)?;
     log::info!(
-        "save_settings: event_pause_ms={} mod_hold_ms={} warmup_shift={} countdown_secs={} appearance.profile={} appearance.mode={} appearance.font_size={}",
+        "save_settings: event_pause_ms={} mod_hold_ms={} warmup_shift={} countdown_secs={} appearance.profile={} appearance.mode={} appearance.font_size={} sidebar_width_px={}",
         cfg.event_pause_ms,
         cfg.mod_hold_ms,
         cfg.warmup_shift,
@@ -127,6 +143,7 @@ pub fn save_settings(app: AppHandle, cfg: SettingsCfg) -> Result<(), String> {
         cfg.appearance.profile,
         cfg.appearance.mode,
         cfg.appearance.font_size,
+        cfg.sidebar_width_px,
     );
     Ok(())
 }
@@ -168,6 +185,7 @@ mod tests {
                 mode: "light".into(),
                 font_size: 1.15,
             },
+            sidebar_width_px: 320,
         };
         let json = serde_json::to_string(&cfg).unwrap();
         let back: SettingsCfg = serde_json::from_str(&json).unwrap();
@@ -216,6 +234,7 @@ mod tests {
                 mode: "dark".into(),
                 font_size: 1.3,
             },
+            sidebar_width_px: 420,
         };
         save_at(&path, &original).unwrap();
         let loaded = load_at(&path).unwrap();
@@ -241,6 +260,58 @@ mod tests {
         assert!(!loaded.warmup_shift);
         assert_eq!(loaded.countdown_secs, 5);
         assert_eq!(loaded.appearance, AppearanceCfg::default());
+        // v2-5 files predate sidebar_width_px too — should default.
+        assert_eq!(loaded.sidebar_width_px, DEFAULT_SIDEBAR_WIDTH_PX);
+        let _ = fs::remove_file(&path);
+    }
+
+    #[test]
+    fn default_includes_sidebar_width_default() {
+        let cfg = SettingsCfg::default();
+        assert_eq!(cfg.sidebar_width_px, 260);
+    }
+
+    #[test]
+    fn serde_emits_camel_case_sidebar_width() {
+        let cfg = SettingsCfg::default();
+        let json = serde_json::to_value(&cfg).unwrap();
+        assert!(json.get("sidebarWidthPx").is_some());
+        assert_eq!(json["sidebarWidthPx"], 260);
+    }
+
+    #[test]
+    fn serde_roundtrip_preserves_sidebar_width() {
+        let cfg = SettingsCfg {
+            sidebar_width_px: 320,
+            ..SettingsCfg::default()
+        };
+        let json = serde_json::to_string(&cfg).unwrap();
+        let back: SettingsCfg = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.sidebar_width_px, 320);
+    }
+
+    #[test]
+    fn load_at_back_compat_with_missing_sidebar_width() {
+        // Files written by v2-7 (before sidebar_width_px existed) should
+        // load cleanly with the 260 default applied.
+        let path = tmp("v2_7_format.json");
+        let v2_7_json = r#"{
+            "eventPauseMs": 8,
+            "modHoldMs": 12,
+            "warmupShift": false,
+            "countdownSecs": 5,
+            "appearance": {
+                "profile": "solarized",
+                "mode": "light",
+                "fontSize": 1.15
+            }
+        }"#;
+        fs::write(&path, v2_7_json).unwrap();
+        let loaded = load_at(&path).unwrap();
+        assert_eq!(loaded.sidebar_width_px, DEFAULT_SIDEBAR_WIDTH_PX);
+        // Other fields preserved.
+        assert_eq!(loaded.event_pause_ms, 8);
+        assert_eq!(loaded.appearance.profile, "solarized");
         let _ = fs::remove_file(&path);
     }
 
