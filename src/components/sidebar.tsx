@@ -20,7 +20,6 @@ export type SidebarProps = {
   onToggleFolder: (path: string) => void;
   onOpenSettings: () => void;
   inSettings: boolean;
-  appVersion: string;
   /** Q19 — live update during drag. */
   onResize: (px: number) => void;
   /** Q19 — commit on mouseup or double-click reset. */
@@ -39,7 +38,6 @@ export function Sidebar({
   onToggleFolder,
   onOpenSettings,
   inSettings,
-  appVersion,
   onResize,
   onResizeCommit,
   currentWidthPx,
@@ -93,14 +91,12 @@ export function Sidebar({
         )}
       </div>
 
-      {/* D-11 — separator above Settings. */}
+      {/* D-11 — separator above Settings. D-14 — version no longer
+          rendered here; it lives in Settings → About. */}
       <div className="border-t border-hairline py-1">
         <SidebarRow icon={<Settings size={16} />} active={inSettings} onClick={onOpenSettings}>
           Settings
         </SidebarRow>
-        <p className="px-5 pb-3 pt-1 font-mono text-[10px] tracking-wide text-fg-quaternary">
-          v{appVersion}
-        </p>
       </div>
 
       <ResizeHandle onResize={onResize} onCommit={onResizeCommit} currentPx={currentWidthPx} />

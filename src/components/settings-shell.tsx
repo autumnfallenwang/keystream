@@ -3,6 +3,7 @@
 import { useState } from "react";
 import type { AppearanceCfg } from "@/lib/core/appearance";
 import type { Settings } from "@/lib/ipc";
+import { AboutSection } from "./settings/about-section";
 import { AdvancedSection } from "./settings/advanced-section";
 import { AppearanceSection } from "./settings/appearance-section";
 import { TimingSection } from "./settings/timing-section";
@@ -34,6 +35,7 @@ export function SettingsShell({ settings, onChange, onReset, activeTab }: Settin
           {activeTab === "advanced" && (
             <AdvancedSection settings={settings} onChange={onChange} onReset={onReset} />
           )}
+          {activeTab === "about" && <AboutSection />}
         </div>
       </div>
     </div>

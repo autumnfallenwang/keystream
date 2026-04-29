@@ -238,3 +238,44 @@ export async function pauseSend(): Promise<void> {
 export async function stopSend(): Promise<void> {
   await invoke("stop_send");
 }
+
+// ---------------------------------------------------------------------------
+// App version + updater (Q-N) — see docs/releasing.md and docs/updater-signing.md
+// ---------------------------------------------------------------------------
+
+/** Currently installed app version — sourced from tauri.conf.json at build time. */
+export async function getAppVersion(): Promise<string> {
+  const { getVersion } = await import("@tauri-apps/api/app");
+  return getVersion();
+}
+
+export type UpdateInfo = {
+  version: string;
+  notes: string | null;
+  date: string | null;
+};
+
+/** Hit the updater endpoint. Returns null if the running version is up to
+ * date; an `UpdateInfo` if a newer release is available. */
+export async function checkForUpdate(): Promise<UpdateInfo | null> {
+  const { check } = await import("@tauri-apps/plugin-updater");
+  const update = await check();
+  if (!update) return null;
+  return {
+    version: update.version,
+    notes: update.body ?? null,
+    date: update.date ?? null,
+  };
+}
+
+/** Download + verify-signature + install the available update, then
+ * relaunch the app. Throws if no update is available or the signature
+ * verification fails. */
+export async function installUpdate(): Promise<void> {
+  const { check } = await import("@tauri-apps/plugin-updater");
+  const { relaunch } = await import("@tauri-apps/plugin-process");
+  const update = await check();
+  if (!update) throw new Error("No update available");
+  await update.downloadAndInstall();
+  await relaunch();
+}

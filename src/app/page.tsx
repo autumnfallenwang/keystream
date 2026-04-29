@@ -41,8 +41,6 @@ import {
   stopSend,
 } from "@/lib/ipc";
 
-const APP_VERSION = "0.1.0";
-
 const DEFAULT_SETTINGS: Settings = {
   eventPauseMs: 10,
   modHoldMs: 10,
@@ -570,7 +568,6 @@ export default function Home() {
             activeTab={settingsTab}
             onTabChange={setSettingsTab}
             onBack={handleCloseSettings}
-            appVersion={APP_VERSION}
             onResize={handleSidebarResize}
             onResizeCommit={handleSidebarCommit}
             currentWidthPx={settings.sidebarWidthPx}
@@ -586,7 +583,6 @@ export default function Home() {
             onToggleFolder={handleToggleFolder}
             onOpenSettings={handleOpenSettings}
             inSettings={inSettings}
-            appVersion={APP_VERSION}
             onResize={handleSidebarResize}
             onResizeCommit={handleSidebarCommit}
             currentWidthPx={settings.sidebarWidthPx}

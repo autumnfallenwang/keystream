@@ -1,16 +1,15 @@
 "use client";
 
-import { ChevronLeft, Palette, Sliders, Wrench } from "lucide-react";
+import { ChevronLeft, Info, Palette, Sliders, Wrench } from "lucide-react";
 import { ResizeHandle } from "./resize-handle";
 import { SidebarEyebrow, SidebarRow } from "./sidebar-row";
 
-export type SettingsTab = "appearance" | "timing" | "advanced";
+export type SettingsTab = "appearance" | "timing" | "advanced" | "about";
 
 export type SettingsSidebarProps = {
   activeTab: SettingsTab;
   onTabChange: (next: SettingsTab) => void;
   onBack: () => void;
-  appVersion: string;
   /** Q19 — live update during drag. */
   onResize: (px: number) => void;
   /** Q19 — commit on mouseup or double-click reset. */
@@ -23,7 +22,6 @@ export function SettingsSidebar({
   activeTab,
   onTabChange,
   onBack,
-  appVersion,
   onResize,
   onResizeCommit,
   currentWidthPx,
@@ -61,15 +59,18 @@ export function SettingsSidebar({
       >
         Advanced
       </SidebarRow>
+      <SidebarRow
+        icon={<Info size={16} />}
+        active={activeTab === "about"}
+        onClick={() => onTabChange("about")}
+      >
+        About
+      </SidebarRow>
 
       <div className="flex-1" />
 
-      <div className="border-t border-hairline-soft py-1">
-        <p className="px-5 pb-3 pt-3 font-mono text-[10px] tracking-wide text-fg-quaternary">
-          v{appVersion}
-        </p>
-      </div>
-
+      {/* D-14 — version footer retired; version + updater live in
+          Settings → About. */}
       <ResizeHandle onResize={onResize} onCommit={onResizeCommit} currentPx={currentWidthPx} />
     </aside>
   );

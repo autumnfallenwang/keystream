@@ -15,7 +15,6 @@ function defaults(overrides: Partial<SidebarProps> = {}): SidebarProps {
     onToggleFolder: vi.fn(),
     onOpenSettings: vi.fn(),
     inSettings: false,
-    appVersion: "0.1.0",
     onResize: vi.fn(),
     onResizeCommit: vi.fn(),
     currentWidthPx: 260,
@@ -29,9 +28,9 @@ describe("Sidebar", () => {
     expect(screen.getByText("Keystream")).toBeInTheDocument();
   });
 
-  it("renders the app version label", () => {
-    render(<Sidebar {...defaults({ appVersion: "1.2.3" })} />);
-    expect(screen.getByText("v1.2.3")).toBeInTheDocument();
+  it("D-14: does NOT render an app-version label (moved to Settings → About)", () => {
+    render(<Sidebar {...defaults()} />);
+    expect(screen.queryByText(/^v\d/)).toBeNull();
   });
 
   it("Open file button invokes onOpenFile", async () => {

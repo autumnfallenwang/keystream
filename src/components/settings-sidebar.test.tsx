@@ -8,7 +8,6 @@ function defaults(overrides: Partial<SettingsSidebarProps> = {}): SettingsSideba
     activeTab: "appearance",
     onTabChange: vi.fn(),
     onBack: vi.fn(),
-    appVersion: "0.1.0",
     onResize: vi.fn(),
     onResizeCommit: vi.fn(),
     currentWidthPx: 260,
@@ -27,32 +26,36 @@ describe("SettingsSidebar — rendering", () => {
     expect(screen.getByText("Settings")).toBeInTheDocument();
   });
 
-  it("renders all three tabs", () => {
+  it("renders all four tabs", () => {
     render(<SettingsSidebar {...defaults()} />);
     expect(screen.getByRole("button", { name: "Appearance" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Timing" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Advanced" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "About" })).toBeInTheDocument();
   });
 
-  it("renders the version footer", () => {
-    render(<SettingsSidebar {...defaults({ appVersion: "0.2.5" })} />);
-    expect(screen.getByText("v0.2.5")).toBeInTheDocument();
+  it("D-14: does NOT render an app-version footer (moved to Settings → About)", () => {
+    render(<SettingsSidebar {...defaults()} />);
+    expect(screen.queryByText(/^v\d/)).toBeNull();
   });
 });
+
+const TAB_LABELS: Record<SettingsTab, string> = {
+  appearance: "Appearance",
+  timing: "Timing",
+  advanced: "Advanced",
+  about: "About",
+};
 
 describe("SettingsSidebar — active marker", () => {
   it.each<SettingsTab>([
     "appearance",
     "timing",
     "advanced",
+    "about",
   ])("marks %s as active when activeTab is set", (tab) => {
-    const labelMap: Record<SettingsTab, string> = {
-      appearance: "Appearance",
-      timing: "Timing",
-      advanced: "Advanced",
-    };
     render(<SettingsSidebar {...defaults({ activeTab: tab })} />);
-    const button = screen.getByRole("button", { name: labelMap[tab] });
+    const button = screen.getByRole("button", { name: TAB_LABELS[tab] });
     expect(within(button).getByTestId("active-edge")).toBeInTheDocument();
   });
 
@@ -75,17 +78,13 @@ describe("SettingsSidebar — interaction", () => {
     "appearance",
     "timing",
     "advanced",
+    "about",
   ])("clicking %s tab invokes onTabChange with that tab", async (tab) => {
     const onTabChange = vi.fn();
-    const labelMap: Record<SettingsTab, string> = {
-      appearance: "Appearance",
-      timing: "Timing",
-      advanced: "Advanced",
-    };
     // Start on a different tab so the click is meaningful.
     const startTab: SettingsTab = tab === "appearance" ? "timing" : "appearance";
     render(<SettingsSidebar {...defaults({ activeTab: startTab, onTabChange })} />);
-    await userEvent.click(screen.getByRole("button", { name: labelMap[tab] }));
+    await userEvent.click(screen.getByRole("button", { name: TAB_LABELS[tab] }));
     expect(onTabChange).toHaveBeenCalledWith(tab);
   });
 });

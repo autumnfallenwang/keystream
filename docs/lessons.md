@@ -80,3 +80,15 @@ These branches were tested against AVD and rejected; documented so future reader
 - **OCR-side fold band-aids** (e.g. `; ↔ : ↔ . ↔ ,` and `$ ↔ #`) for the shift-drop pattern. Already-reverted before poc2 began; fix the cause, not the symptom.
 
 Cross-platform branches (Linux `xdotool/ydotool`, Windows `SendInput`, Karabiner-DriverKit-VirtualHIDDevice) were explicitly **deferred** to future research rounds, not ruled out.
+
+## 2026-04 · Bundling lessons
+
+### 2026-04-29 · Dev-mode dock icons are meaningless — always validate against a `tauri:build`
+
+`pnpm tauri:dev` runs a bare binary at `target/debug/keystream`. macOS shows a default fallback icon for bare binaries — typically larger than installed app icons — and **does not read `src-tauri/icons/icon.icns` at all**. Regenerating the icon source has no effect on the dev-mode dock appearance.
+
+Symptom: "my icon is way bigger than other apps in the dock" while in `tauri:dev`. The icon files on disk are correct; the dock just isn't using them.
+
+Validation: run `pnpm tauri:build` (or `pnpm tauri:build --debug` for speed), copy `target/{release,debug}/bundle/macos/Keystream.app` to `/Applications/`, launch from there. **That** dock icon is the real shipped icon, sized correctly relative to other apps.
+
+Don't tune the icon source based on dev-mode appearance — you'll over-correct and ship something undersized.

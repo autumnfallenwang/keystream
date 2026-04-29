@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <!-- Off-white rounded-square fills the full canvas (matches
+       teacherease's geometry). The pencil is sized smaller than
+       the glyph would normally fill so it reads at the same visual
+       weight as other dock icons. -->
+  <rect x="0" y="0" width="1024" height="1024"
+        rx="229" ry="229" fill="#F5F5FA"/>
+
+  <!-- Pencil group: rotated -10° around centre, tip pointing down -->
+  <g transform="translate(512 512) rotate(-10)">
+    <rect x="-70" y="-360"
+                         width="140" height="130"
+                         rx="70" ry="70"
+                         fill="#7E98FF"/>
+    <rect x="-70" y="-249"
+                          width="140" height="38"
+                          fill="#5570E8"/>
+    <path d="M -70 -230
+                  L 70 -230
+                  L 70 230
+                  L -70 230 Z" fill="#6A86FF"/>
+    <path d="M -70 230
+                 L 0 360
+                 L 70 230 Z" fill="#7E98FF"/>
+    <path d="M -18.846153846153847 325
+                      L 0 360
+                      L 18.846153846153847 325 Z" fill="#5570E8"/>
+  </g>
+</svg>

@@ -26,5 +26,7 @@ open = "5"
 tauri = { version = "2.10.3", features = [] }
 tauri-plugin-dialog = "2"
 tauri-plugin-log = "2"
+tauri-plugin-process = "2"
+tauri-plugin-updater = "2"
 tokio = { version = "1", features = ["rt-multi-thread"] }
 typer-core = { path = "../typer-core" }
