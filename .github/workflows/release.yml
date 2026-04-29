@@ -1,0 +1,63 @@
+name: Release
+
+# Reusable build workflow. Called by auto-release.yml after it tags a
+# new version. Also triggerable directly by a tag push for manual
+# releases (e.g. maintainer-only hotfix).
+#
+# Keystream is macOS-arm64 only — CGEvent + the v2 sender pipeline are
+# Apple Silicon native. No Intel / Linux / Windows artifacts.
+
+on:
+  workflow_call:
+    inputs:
+      tag:
+        required: true
+        type: string
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build & sign (macOS arm64)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref_name }}
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.32.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Build, sign, and upload release assets
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          tagName: ${{ inputs.tag || github.ref_name }}
+          releaseName: "Keystream v__VERSION__"
+          releaseBody: "See the assets to download this version and install. This release was built automatically from the tag; edit these notes before publishing."
+          releaseDraft: true
+          prerelease: false
+          includeUpdaterJson: true
+          args: --target aarch64-apple-darwin --config '{"bundle":{"createUpdaterArtifacts":true}}'
