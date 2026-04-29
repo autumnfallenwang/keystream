@@ -30,7 +30,7 @@ Rows below are listed newest-first within each type.
 **Where:** `src/components/main-header.tsx`, `src/components/action-bar.tsx` (retired), `src/components/text-panel.tsx` (wrap), `src/app/page.tsx` (wiring), plus visual-contract update in `design-plan.md`.
 **Observed:** Current header carries two gate chips (✓ Text loaded, ✓ Accessibility) + Edit/Lock toggle. The 72px sticky footer action bar carries Send/Pause/Stop + the during-send status line. User wants: drop the gate chips, show the loaded filename instead; eliminate the footer entirely; pull Send/Stop into the header alongside Edit/Lock; add a Wrap-long-lines toggle; arrange the four controls cohesively.
 **Locked under:** Q21 in `design-plan.md` (supersedes Q14 visual contract Region 2a/2c claims).
-**Status:** in-progress (Q21 locked, awaiting fire)
+**Status:** done (awaiting commit SHA stamp)
 
 ### D-12 — Try-as-text for any file the user clicks (no extension allowlist)
 **Where:** `src/components/file-explorer.tsx`, `src/lib/core/file-tree.ts::isTextFile`, `src/app/page.tsx::handleSelectFile`, plus a new `<BinaryFileWarning>` component in the main panel area.

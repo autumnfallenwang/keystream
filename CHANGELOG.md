@@ -6,6 +6,9 @@ Format: Keep a [Changelog](https://keepachangelog.com/en/1.1.0/). Version tags f
 
 ## [Unreleased]
 
+- Main header redesign: filename slot replaces the gate chips; Edit/Lock, a new Wrap toggle, and Send/Pause/Resume/Stop now all live in the header. The footer action bar is gone — the text panel uses the freed pixels. Status during a send appears as a thin sub-row under the header.
+- Soft-wrap: new toggle in the header wraps long lines in both edit and lock modes (per session, defaults off).
+- Accessibility prompt: when the grant is missing, a thin amber row appears above the text panel and links to System Settings.
 - Sidebar: file explorer is now a real collapsible "Explorer" section with a header chevron; visible hairline rules separate the sidebar's three zones.
 - Sidebar: opening a single file (no folder) shows that filename as a one-row indicator in the Explorer; clicking re-loads from disk.
 - File explorer: every file row is clickable. Picking a binary or oversized file (or one without a known text extension) loads a friendly warning view in the main panel with a "← Back" button — VSCode-style — instead of being blocked at the row level.

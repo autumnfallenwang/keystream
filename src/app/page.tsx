@@ -2,7 +2,6 @@
 
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
-import { ActionBar } from "@/components/action-bar";
 import { BinaryFileWarning } from "@/components/binary-file-warning";
 import { CountdownOverlay } from "@/components/countdown-overlay";
 import { MainHeader } from "@/components/main-header";
@@ -77,6 +76,10 @@ export default function Home() {
   const [loadedFolder, setLoadedFolder] = useState<FolderTree | null>(null);
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
   const [expandedPaths, setExpandedPaths] = useState<Set<string>>(new Set());
+
+  // Q21 — soft-wrap toggle for the text panel. Per-session, defaults
+  // off (matches Q16's `white-space: pre`).
+  const [wrap, setWrap] = useState(false);
 
   // Q20 — when the user clicks a file that fails to read as UTF-8 (or
   // is over the 1 MiB cap), the main panel area swaps to a warning
@@ -285,6 +288,20 @@ export default function Home() {
     allGatesPass(gates) &&
     (appState.mode === "idle" || appState.mode === "done" || appState.mode === "stopped");
 
+  // Q21 — header derived values.
+  const headerFilename =
+    selectedFile === null ? null : (selectedFile.split(/[\\/]/).pop() ?? selectedFile);
+  // Hover-tooltip reason for a disabled Send button. Order: missing
+  // text > unlocked > missing accessibility. The accessibility case
+  // also surfaces the inline warning row above the text panel.
+  let sendDisabledReason: string | null = null;
+  if (!canSend) {
+    if (text.length === 0) sendDisabledReason = "Load text first.";
+    else if (!locked) sendDisabledReason = "Lock the text to send.";
+    else if (!(permissions?.accessibility ?? false))
+      sendDisabledReason = "Grant Accessibility in System Settings.";
+  }
+
   // Q18 — debounced explorer-state persistence. Mirrors settingsSaveRef
   // for the same UX shape: in-memory updates feel snappy; the disk
   // write is amortised over 300ms of activity.
@@ -413,6 +430,11 @@ export default function Home() {
     setBinaryWarning(null);
   }, []);
 
+  // Q21 — wrap toggle. Per-session, no persistence.
+  const handleToggleWrap = useCallback(() => {
+    setWrap((prev) => !prev);
+  }, []);
+
   const handleToggleFolder = useCallback(
     (path: string) => {
       setExpandedPaths((prev) => {
@@ -431,10 +453,6 @@ export default function Home() {
   const handleToggleLocked = useCallback((next: boolean) => {
     setLocked(next);
     void log(`page: lock_toggled locked=${next}`);
-  }, []);
-
-  const handleTextGate = useCallback(() => {
-    // No-op for now; the Edit/Lock switch is the action surface.
   }, []);
 
   const handleAccessibilityGate = useCallback(() => {
@@ -586,20 +604,37 @@ export default function Home() {
             <>
               <MainHeader
                 state={appState}
-                textLoaded={text.length > 0}
-                textCharCount={text.length}
-                accessibilityGranted={permissions?.accessibility ?? false}
+                filename={headerFilename}
                 locked={locked}
                 totalChars={text.length}
-                onTextGateClick={handleTextGate}
-                onAccessibilityGateClick={handleAccessibilityGate}
+                wrap={wrap}
+                canSend={canSend}
+                sendDisabledReason={sendDisabledReason}
                 onToggleLocked={handleToggleLocked}
+                onToggleWrap={handleToggleWrap}
+                onSend={handleSend}
+                onPause={handlePause}
+                onResume={handleResume}
+                onStop={handleStop}
               />
+              {!(permissions?.accessibility ?? true) && (
+                <button
+                  type="button"
+                  onClick={handleAccessibilityGate}
+                  className="flex shrink-0 items-center justify-center gap-2 border-b border-warn/30 bg-warn/5 px-4 py-2 text-[12px] text-warn transition-colors hover:bg-warn/10"
+                  data-testid="accessibility-warning-row"
+                >
+                  <span>
+                    Accessibility permission is not granted — click to open System Settings.
+                  </span>
+                </button>
+              )}
               {binaryWarning === null ? (
                 <TextPanel
                   text={text}
                   locked={locked}
                   state={appState}
+                  wrap={wrap}
                   onTextChange={setText}
                   onLoadFile={handleLoadFile}
                 />
@@ -610,15 +645,6 @@ export default function Home() {
                   onBack={handleBinaryWarningBack}
                 />
               )}
-              <ActionBar
-                state={appState}
-                canSend={canSend}
-                totalChars={text.length}
-                onSend={handleSend}
-                onPause={handlePause}
-                onResume={handleResume}
-                onStop={handleStop}
-              />
             </>
           )}
         </main>

@@ -24,14 +24,14 @@ const pausedAt = (charsTyped: number): AppState => ({
 describe("TextPanel — edit mode", () => {
   it("shows the empty-state hint when text is empty", () => {
     render(
-      <TextPanel text="" locked={false} state={idle} onTextChange={vi.fn()} onLoadFile={vi.fn()} />,
+      <TextPanel text="" locked={false} state={idle} onTextChange={vi.fn()} wrap={false} onLoadFile={vi.fn()} />,
     );
     expect(screen.getByText(/drop a file here/i)).toBeInTheDocument();
   });
 
   it("does not render a gutter in the empty state", () => {
     render(
-      <TextPanel text="" locked={false} state={idle} onTextChange={vi.fn()} onLoadFile={vi.fn()} />,
+      <TextPanel text="" locked={false} state={idle} onTextChange={vi.fn()} wrap={false} onLoadFile={vi.fn()} />,
     );
     // No line numbers when there's no text.
     expect(screen.queryByText("1")).toBeNull();
@@ -44,6 +44,7 @@ describe("TextPanel — edit mode", () => {
         text=""
         locked={false}
         state={idle}
+        wrap={false}
         onTextChange={vi.fn()}
         onLoadFile={onLoadFile}
       />,
@@ -58,6 +59,7 @@ describe("TextPanel — edit mode", () => {
         text="hello"
         locked={false}
         state={idle}
+        wrap={false}
         onTextChange={vi.fn()}
         onLoadFile={vi.fn()}
       />,
@@ -72,6 +74,7 @@ describe("TextPanel — edit mode", () => {
         text={"alpha\nbeta\ngamma"}
         locked={false}
         state={idle}
+        wrap={false}
         onTextChange={vi.fn()}
         onLoadFile={vi.fn()}
       />,
@@ -87,6 +90,7 @@ describe("TextPanel — edit mode", () => {
         text={"alpha\nbeta\ngamma"}
         locked={false}
         state={idle}
+        wrap={false}
         onTextChange={vi.fn()}
         onLoadFile={vi.fn()}
       />,
@@ -102,6 +106,7 @@ describe("TextPanel — edit mode", () => {
         text={"a very long line that would otherwise wrap"}
         locked={false}
         state={idle}
+        wrap={false}
         onTextChange={vi.fn()}
         onLoadFile={vi.fn()}
       />,
@@ -119,6 +124,7 @@ describe("TextPanel — locked mode", () => {
         text={"alpha\nbeta\ngamma"}
         locked={true}
         state={idle}
+        wrap={false}
         onTextChange={vi.fn()}
         onLoadFile={vi.fn()}
       />,
@@ -137,6 +143,7 @@ describe("TextPanel — locked mode", () => {
         text={text}
         locked={true}
         state={sendingAt(4, text.length)}
+        wrap={false}
         onTextChange={vi.fn()}
         onLoadFile={vi.fn()}
       />,
@@ -153,6 +160,7 @@ describe("TextPanel — locked mode", () => {
         text={text}
         locked={true}
         state={pausedAt(4)}
+        wrap={false}
         onTextChange={vi.fn()}
         onLoadFile={vi.fn()}
       />,
@@ -167,6 +175,7 @@ describe("TextPanel — locked mode", () => {
         text="abc"
         locked={true}
         state={idle}
+        wrap={false}
         onTextChange={vi.fn()}
         onLoadFile={vi.fn()}
       />,
@@ -183,6 +192,7 @@ describe("TextPanel — locked mode", () => {
         text={"alpha\nbeta\ngamma"}
         locked={true}
         state={idle}
+        wrap={false}
         onTextChange={vi.fn()}
         onLoadFile={vi.fn()}
       />,
