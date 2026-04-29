@@ -27,6 +27,10 @@ use crate::validation::validate_text_size;
     rename_all_fields = "camelCase"
 )]
 pub enum SendEvent {
+    /// Mid-loop progress tick (B-02). Emitted from `typer_core::run_send`
+    /// every `PROGRESS_INTERVAL` chars. Consumed by the frontend reducer
+    /// to drive the live active-line indicator.
+    SendProgress { chars_typed: usize },
     /// Final outcome — all chars typed.
     SendComplete {
         chars_typed: usize,
@@ -90,12 +94,26 @@ pub async fn run_send(
     // the worker; pause_send / stop_send flip via the State handle.
     let control = state.control.clone();
 
+    // Clone the channel for the progress callback. Channel is Clone +
+    // Send + Sync; sends are non-blocking, fire-and-forget.
+    let progress_channel = on_event.clone();
+
     let outcome =
         tokio::task::spawn_blocking(move || -> Result<typer_core::SendOutcome, String> {
             let src =
                 RealEventSource::session_default().map_err(|e| format!("event source: {e}"))?;
-            typer_core::run_send(&src, &text, &send_cfg, &control, start_offset)
-                .map_err(|e| format!("run_send: {e}"))
+            let mut progress = move |chars_typed: usize| {
+                let _ = progress_channel.send(SendEvent::SendProgress { chars_typed });
+            };
+            typer_core::run_send(
+                &src,
+                &text,
+                &send_cfg,
+                &control,
+                start_offset,
+                Some(&mut progress),
+            )
+            .map_err(|e| format!("run_send: {e}"))
         })
         .await
         .map_err(|e| format!("run_send join: {e}"))??;
@@ -148,6 +166,14 @@ pub fn stop_send(state: State<'_, SendState>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn send_event_send_progress_serializes_camel_case() {
+        let event = SendEvent::SendProgress { chars_typed: 100 };
+        let json = serde_json::to_value(&event).unwrap();
+        assert_eq!(json["event"], "sendProgress");
+        assert_eq!(json["data"]["charsTyped"], 100);
+    }
 
     #[test]
     fn send_event_send_complete_serializes_camel_case() {

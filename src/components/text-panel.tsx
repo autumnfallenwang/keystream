@@ -13,6 +13,13 @@ export type TextPanelProps = {
   onLoadFile: () => void;
 };
 
+// Q16: gutter row line-height MUST equal content row line-height. Content
+// renders at `text-[13px] leading-[1.6]` → 13 × 1.6 = 20.8px per row. Gutter
+// line numbers stay smaller (`text-[11px]`) for visual subordination but
+// each gutter row is sized to LINE_HEIGHT_PX so the columns align at every
+// row regardless of UI scale (--font-scale from Q15).
+const LINE_HEIGHT_PX = 20.8;
+
 export function TextPanel(props: TextPanelProps) {
   if (!props.locked) {
     return <EditView {...props} />;
@@ -22,11 +29,17 @@ export function TextPanel(props: TextPanelProps) {
 
 function EditView(props: TextPanelProps) {
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const gutterRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     if (props.text.length === 0) return;
     textareaRef.current?.focus();
   }, [props.text.length]);
+
+  const lineCount = useMemo(() => {
+    if (props.text.length === 0) return 0;
+    return props.text.split("\n").length;
+  }, [props.text]);
 
   if (props.text.length === 0) {
     return (
@@ -47,13 +60,27 @@ function EditView(props: TextPanelProps) {
   }
 
   return (
-    <div className="flex flex-1 flex-col overflow-hidden">
+    <div className="flex flex-1 overflow-hidden bg-canvas">
+      <Gutter
+        lineCount={lineCount}
+        activeNumber={null}
+        ref={gutterRef}
+        topPaddingPx={12}
+        bottomPaddingPx={12}
+      />
       <textarea
         ref={textareaRef}
         value={props.text}
         onChange={(e) => props.onTextChange(e.target.value)}
+        onScroll={(e) => {
+          if (gutterRef.current !== null) {
+            gutterRef.current.scrollTop = e.currentTarget.scrollTop;
+          }
+        }}
         spellCheck={false}
-        className="flex-1 resize-none bg-canvas px-4 py-3 font-code text-[13px] leading-[1.6] text-fg outline-none"
+        wrap="off"
+        style={{ whiteSpace: "pre", lineHeight: `${LINE_HEIGHT_PX}px` }}
+        className="flex-1 resize-none overflow-auto bg-canvas px-4 py-3 font-code text-[13px] text-fg outline-none"
       />
     </div>
   );
@@ -70,36 +97,72 @@ function LockedView(props: TextPanelProps) {
   const charsTyped = sendingCharsTyped(props.state);
   const isActiveSend = props.state.mode === "sending" || props.state.mode === "paused";
   const activeIdx = isActiveSend ? activeLineIndex(props.text, charsTyped) : -1;
+  const activeNumber = activeIdx >= 0 ? activeIdx + 1 : null;
   const isPaused = props.state.mode === "paused";
 
   return (
     <div className="flex flex-1 overflow-auto bg-canvas">
       <div className="flex flex-1">
-        <div className="sticky left-0 w-[52px] shrink-0 border-r border-hairline-soft bg-rail">
-          {lines.map((l) => (
-            <div
-              key={l.number}
-              className={`pr-3 text-right font-code text-[11px] leading-[1.6] ${
-                l.number === activeIdx + 1 ? "font-medium text-fg-secondary" : "text-fg-tertiary"
-              }`}
-            >
-              {l.number === activeIdx + 1 ? "→ " : ""}
-              {l.number}
-            </div>
-          ))}
-        </div>
+        <Gutter lineCount={lines.length} activeNumber={activeNumber} sticky />
 
-        <pre className="flex-1 px-4 font-code text-[13px] leading-[1.6] text-fg">
+        <pre
+          className="flex-1 px-4 font-code text-[13px] text-fg"
+          style={{ lineHeight: `${LINE_HEIGHT_PX}px` }}
+        >
           {lines.map((l) => (
             <LineRow
               key={l.number}
               content={l.content}
-              isActive={l.number === activeIdx + 1}
+              isActive={l.number === activeNumber}
               isPaused={isPaused}
             />
           ))}
         </pre>
       </div>
+    </div>
+  );
+}
+
+type GutterProps = {
+  lineCount: number;
+  activeNumber: number | null;
+  sticky?: boolean;
+  topPaddingPx?: number;
+  bottomPaddingPx?: number;
+  ref?: React.Ref<HTMLDivElement>;
+};
+
+function Gutter({
+  lineCount,
+  activeNumber,
+  sticky,
+  topPaddingPx = 0,
+  bottomPaddingPx = 0,
+  ref,
+}: GutterProps) {
+  const className = `${sticky ? "sticky left-0 " : ""}w-[52px] shrink-0 overflow-hidden border-r border-hairline-soft bg-rail font-code text-[11px]`;
+  return (
+    <div
+      ref={ref}
+      className={className}
+      style={{ paddingTop: topPaddingPx, paddingBottom: bottomPaddingPx }}
+      aria-hidden="true"
+    >
+      {Array.from({ length: lineCount }, (_, i) => i + 1).map((n) => {
+        const isActive = activeNumber !== null && n === activeNumber;
+        return (
+          <div
+            key={n}
+            className={`pr-3 text-right ${
+              isActive ? "font-medium text-fg-secondary" : "text-fg-tertiary"
+            }`}
+            style={{ lineHeight: `${LINE_HEIGHT_PX}px`, height: `${LINE_HEIGHT_PX}px` }}
+          >
+            {isActive ? "→ " : ""}
+            {n}
+          </div>
+        );
+      })}
     </div>
   );
 }

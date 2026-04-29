@@ -1,6 +1,6 @@
 # Keystream Design Plan
 
-This document captures the architecture, data flow, and the "why" behind each decision. The **Locked Decisions** section is append-only — never edit past entries without user approval.
+This document captures the architecture, data flow, visual contract, and load-bearing decisions. The **Locked Decisions** section is append-only — never edit past entries without user approval.
 
 ## Goal
 
@@ -8,312 +8,245 @@ Reliably type arbitrary text into a remote virtual desktop or RDP session when t
 
 ## v2 architecture: linear, no OCR
 
-After v1's per-chunk OCR-verify loop and the [poc2 keystroke-injection study](poc2-results.md), we settled on a much simpler design: **type the text and stop**. No OCR, no per-chunk verify, no fail-and-retry handshake. The poc2 study validated the keystroke sender at 0 / 45,051 chars across three 15k-character runs on AVD — at that reliability level, OCR-verify is solving a problem that no longer exists.
+After v1's per-chunk OCR-verify loop and the keystroke-injection study (see [`lessons.md`](lessons.md) "poc2 — keystroke injection method" entry), we settled on a much simpler design: **type the text and stop**. No OCR, no per-chunk verify, no fail-and-retry handshake. The poc2 study validated the keystroke sender at 0 / 45,051 chars across three 15k-character runs on AVD — at that reliability level, OCR-verify is solving a problem that no longer exists.
 
-Removed compared to v1:
-- OCR pipeline (`ocr_helper` Swift sidecar, `ocr.rs`, fold table, LCS alignment, chunk stitching, scroll-verify)
-- Region calibration (no OCR → no region to capture)
-- Per-chunk verify loop, chunk pass/fail events, ack handshake
-- Skip / Stop / Continue fail handling
-- Q11 auto-rollback (no fail to retry)
-- Line-length pre-check (Q8 was only needed because OCR couldn't see horizontally-scrolled lines)
-- Screen Recording permission
+**Removed vs v1:** OCR pipeline (`ocr_helper` Swift sidecar, fold table, LCS alignment, chunk stitching, scroll-verify), region calibration, per-chunk verify, fail handshake, auto-rollback (Q11 retired), line-length pre-check, Screen Recording permission.
 
-Kept:
-- Keystroke sender (with the new Private-source fix — see Q12)
-- Pre-send countdown
-- Stop button (cooperative cancel)
-- Accessibility permission
-- Text persistence
+**Kept:** keystroke sender (with Q12 Private-source fix), pre-send countdown, cooperative Stop, Accessibility permission, text persistence.
 
 ## Three-layer architecture
 
-1. **Rust core** (`typer-core/`) — platform-specific keystroke sender. No UI, no Tauri dependency. Sender posts CGEvents using the cliclick recipe (Q1, Q2, Q3) with a `Private` event source (Q12).
+1. **Rust core** (`typer-core/`) — platform-specific keystroke sender. No UI, no Tauri dep. Posts CGEvents using the cliclick recipe (Q1, Q2, Q3) with a `Private` event source (Q12).
 2. **Tauri shell** (`src-tauri/`) — thin Rust wrapper. Exposes `typer-core` as `#[tauri::command]` handlers, owns permission probes and persistence.
-3. **Next.js frontend** (`src/`) — React UI in Tauri's webview. Static export (`output: 'export'`), no server.
+3. **Next.js frontend** (`src/`) — React UI in Tauri's webview. Static export, no server.
 
-Pure business logic (text loading, settings serialization) lives in `src/lib/core/` — no platform imports, unit-testable without Tauri.
+Pure business logic (text loading, settings serialization, app state) lives in `src/lib/core/` — no platform imports, unit-testable without Tauri.
 
 ## Data flow (typical send)
 
 ```
-frontend: user pastes text or picks file → text loaded (edit mode)
+frontend: user picks text or file → text loaded (edit mode)
 frontend: user clicks "Lock" → text locked (read-only)
-frontend: pre-task gates evaluated:
-  ├─ text loaded + locked?
-  └─ Accessibility permission granted?
+frontend: pre-task gates evaluated (text loaded+locked, Accessibility granted)
        Send button enabled only when both pass.
 
 frontend: user clicks Send → invoke("run_send", {text, cfg, start_offset: 0})
- ├─ countdown COUNTDOWN_SECS seconds (user clicks into target VM during this window)
+ ├─ countdown countdownSecs seconds (user focuses target VM during this window)
  ├─ shift warmup (Q3)
- └─ for each char in text starting from start_offset:
-     ├─ check control flag:
-     │   ├─ pause-requested → halt, emit "send-paused" {position}, await resume
-     │   └─ stop-requested  → halt, emit "send-stopped" {position}
-     ├─ typer-core::send_char (cliclick recipe + Private source)
-     ├─ emit "send-progress" {chars_typed, total_chars}  (throttled, e.g. every 100 chars)
+ └─ for each char from start_offset:
+     ├─ check control flag → pause-requested or stop-requested halt cleanly
+     ├─ post CGEvent (cliclick recipe + Private source)
+     ├─ emit SendProgress{chars_typed} every PROGRESS_INTERVAL chars
      └─ sleep event_pause_ms
- └─ emit "send-complete" {chars, duration_ms, skipped}
+ └─ emit SendComplete / SendPaused{position} / SendStopped{position}
 
-resume:
-frontend: user clicks Resume → invoke("run_send", {text, cfg, start_offset: paused_position})
-  → same flow, starting from the paused index
+resume = run_send with start_offset = paused_position. Same flow, fresh countdown.
 ```
-
-Linear. No verify, no retry, no chunking. Three control verbs: **send / pause / stop** (Q14). Pause halts at the current char; Resume restarts from there with a fresh countdown. Stop halts and resets to the beginning — next Send starts from char 0.
 
 ## Tauri command surface (v2)
 
-Down from 16 commands in v1 to ~9:
-
 | Command | Purpose |
 |---|---|
-| `run_send(text, cfg, start_offset)` | Drive the linear send from `start_offset`. Emits `send-progress` / `send-paused` / `send-stopped` / `send-complete` |
-| `pause_send()` | Set the cooperative pause flag (loop halts at next char, holds position) |
-| `stop_send()` | Set the cooperative stop flag (loop halts and position resets to 0) |
-| `get_settings()` / `save_settings(cfg)` | Read / persist the 4 dials in Q13 |
+| `run_send(text, cfg, start_offset)` | Drive the linear send. Emits `SendProgress` / `SendPaused` / `SendStopped` / `SendComplete` over a typed Channel |
+| `pause_send()` / `stop_send()` | Set the cooperative pause / stop flag |
+| `get_settings()` / `save_settings(cfg)` | Read / persist the dials in Q13 + appearance in Q15 + sidebar width in Q19 |
 | `check_permissions()` | Probe Accessibility |
 | `open_settings_pane()` | Deep-link to System Settings on permission deny |
-| `read_text_file` / `save_text` / `get_text` / `clear_text` | Persistence |
+| `read_text_file` / `save_text` / `get_text` / `clear_text` | Text persistence |
+| `pick_folder` / `read_folder_tree` (v2-8 pending) | File-explorer backend (Q18) |
+| `get_state` / `save_state` (v2-8 pending) | Per-session ephemeral state — last folder, selected file, expanded paths (Q18) |
 | `log_{info,warn,error}` / `open_log_dir` | Logging |
 
-Control flag is tri-state in `typer-core` — `running` / `pause_requested` / `stop_requested`. Resume isn't a separate command: the frontend just calls `run_send` again with `start_offset = last paused position`.
+## Visual contract
 
-Removed v1 commands: `calibrate`, `get_region`, `clear_region`, `check_lines`, `verify_visible`, `scroll_verify`, `continue_after_fail`, `send_with_chunked_verify`.
+**Aesthetic:** "Terminal Atelier" — a calibrated tool, not a friendly assistant. Composed, austere, slightly industrial, one electric accent. Reference points: Linear, JetBrains IDE chrome, Things 3.
 
-## Frontend layout (v2)
-
-**Style:** modern desktop-app workspace pattern — left rail + main column, like Notion / Linear / Claude Desktop. Min window size 1000×700.
+**Palette tokens** (live in `src/app/globals.css`):
 
 ```
-┌────────────────────┬────────────────────────────────────────────────┐
-│  Keystream         │  ✓ Text  ✓ Accessibility        [✎ Edit/🔒]   │ ← main header
-│                    ├────────────────────────────────────────────────┤
-│  ─ DOCUMENT ────   │                                                │
-│  📄 Current text   │   1  function Foo(bar) { return bar.baz(); }  │
-│  📁 Load file...   │   2  const Q = (x) => ({ ... });              │
-│  🗑 Clear          │   3  class Server { listen(port) { ... } }    │
-│                    │   ...                                          │ ← main body
-│  ─ HISTORY ────    │   268  await Promise.all([...]).then(...);    │  (text panel,
-│  ▸ snippet 1       │                                                │   monospace,
-│  ▸ snippet 2       │                                                │   line numbers)
-│  ▸ snippet 3       │                                                │
-│                    │                                                │
-│                    │                                                │
-│                    │                                                │
-│                    ├────────────────────────────────────────────────┤
-│                    │  Typing 4,521 / 15,017 · 18.4s                │ ← status line
-│                    ├────────────────────────────────────────────────┤  (during send only)
-│  ⚙ Settings       │              [⏸ Pause]              [⏹ Stop] │ ← action bar
-│  v0.1.0            │                                                │  (sticky to main)
-└────────────────────┴────────────────────────────────────────────────┘
-   sidebar (~240px)              main column (fills)
+Backgrounds:  --bg-canvas / --bg-rail / --bg-elevated / --bg-hover / --bg-active
+Borders:      --hairline / --hairline-soft / --hairline-strong
+Foreground:   --fg-primary / --fg-secondary / --fg-tertiary / --fg-quaternary
+Accent:       --accent / --accent-hover / --accent-press / --accent-glow
+Status:       --ok / --warn / --alert
+Scale:        --font-scale (Q15) / --sidebar-width (Q19)
 ```
 
-**Two columns. No global footer.** Action bar lives at the bottom of the main column (sticky there, not the whole window) — actions stay anchored to the content they act on.
+Five palette profiles × light/dark are user-selectable per Q15: `atelier`, `solarized`, `nord`, `dracula`, `contrast`. Atelier-dark is the bare-`:root` baseline; other variants apply via `.theme-<profile>-<mode>` class on `<html>` (the `theme-provider.tsx` component manages this).
 
-### Sidebar (~240px wide)
+**Typography** (all loaded via `next/font/google` in `src/app/layout.tsx`):
 
-- **Top:** App name / logo.
-- **Document section:**
-  - `📄 Current text` (selected when working on the loaded text)
-  - `📁 Load file...` (opens Tauri file dialog)
-  - `🗑 Clear` (wipes the current text)
-- **History section** (auto-saved snippets — last N sends, click to reload into Current text):
-  - List of recent text inputs, abbreviated.
-  - Future: saved profiles for per-VM settings.
-  - Acceptable to be empty / minimal at v2 launch — fills as the user uses the app.
-- **Bottom-left footer:**
-  - `⚙ Settings` — opens settings as a separate main-area page (replaces the text panel until dismissed).
-  - App version label below it (small, dimmed).
-
-### Main header (~52px)
-
-- **Left:** gate indicators — `✓ Text` and `✓ Accessibility`. Click ✗ to remediate. During send/pause/stopped/done, this area swaps to a status indicator (see below).
-- **Right:** `[✎ Edit / 🔒 Lock]` toggle for the text panel. Edit/Lock is text-panel-scoped so it lives in the document toolbar, not the action bar.
-
-### Main body (text panel)
-
-- Monospace, line numbers in left gutter.
-- **Edit mode**: editable as a textarea. Send button disabled.
-- **Locked mode**: read-only. Send button enabled if both gates pass.
-- Default mode after Load File / Clear: edit. Default after first Send: locked.
-- During send/pause, mode is forced to locked (toggle disabled).
-- **Active position indicator (Q14)**: subtle blue left-border on the line currently being typed. Updates from `send-progress`. When paused, stays on the paused line (does not blink). Cleared when send completes or stops.
-
-### Status line (~32px, only visible during/after send)
-
-Thin row immediately above the action bar. Replaces the gate indicators in the main header *and* shows progress text below it during a run, so the user has visual reinforcement at both edges of the main column.
-
-States:
-- `Typing 4,521 / 15,017 chars · 18.4s elapsed` — sending
-- `⏸ Paused at 4,521 / 15,017 chars` — paused
-- `✓ Done · 15,017 / 15,017 chars · 60.2s` — done (reverts to gates after ~3s)
-- `⏹ Stopped at 4,521 / 15,017 chars` — stopped (reverts to gates on next Send click)
-
-### Action bar (~64px, sticky to main column bottom)
-
-Centered (or right-aligned) row of two buttons:
-
-| App state | Primary button | Secondary button |
+| Use | Family | Size |
 |---|---|---|
-| Idle / done / stopped | `▶ Send` | `⏹ Stop` (disabled) |
-| Sending | `⏸ Pause` | `⏹ Stop` (enabled) |
-| Paused | `▶ Resume` | `⏹ Stop` (enabled) |
+| Wordmark "Keystream" | Fraunces | 18px |
+| Body / UI labels | Geist | 13px |
+| Eyebrows (sidebar headings) | Geist Mono UPPERCASE | 10px |
+| Numerical readouts | Geist Mono `tabular-nums` | 12–13px |
+| Text panel + line numbers | JetBrains Mono | 13px / 11px |
+| Countdown numerals | Fraunces | 220px |
 
-- Primary button toggles Send ↔ Pause ↔ Resume per Q14.
-- Stop is always present, only enabled during send/pause.
-- Esc key is bound to Pause (during sending) or Stop (during paused/stopped) per current state.
+Font family stack is locked (Q15). UI scale (`--font-scale`, range 50–200%) is the only typography knob.
 
-### Countdown overlay
+**Window:** Tauri window 1280×820 default, 1000×700 minimum. No native macOS title bar; the sidebar's top region inset for traffic lights.
 
-Fires on every Send and every Resume (Q14: re-focus the AVD window after pausing). Covers the whole window: `3 → 2 → 1 → GO`. Disappears on first keystroke. Cancel button visible (Esc also cancels).
+### Region map
 
-### Settings page
+The webview is two columns: a **resizable sidebar** (left) and the **main column** (right, fills remainder).
 
-Click `⚙ Settings` in the sidebar bottom-left → main column swaps from the text panel to a settings view (the sidebar stays). Four dials per Q13 + a "Reset defaults" button + a "Back" affordance to return to the text panel. Persisted to `<app_data_dir>/settings.json`.
+- **Region 1 — Sidebar** (resizable 180–600px, default 260px). Composition depends on whether v2-8 file explorer has shipped — see Region 1 detail below.
+- **Region 2 — Main column.** Three vertical sub-regions:
+  - **2a. Header** (52px) — gates (`✓ Text loaded`, `✓ Accessibility`) on the left switching to a status indicator during send/pause; Edit/Lock segmented switch on the right.
+  - **2b. Body** — the text panel. Edit mode = `<textarea>` + sibling gutter. Locked mode = `<pre>` + gutter + active-line indicator (scanline + tinted background, Q16).
+  - **2c. Action bar** (72px sticky bottom) — status line above + two buttons (Send/Pause/Resume primary, Stop secondary), centered, `--bg-elevated` background, hairline-strong top border.
+- **Region 3 — Countdown overlay.** Fullscreen frosted-glass scrim with Fraunces 220px numeral and a ring filling clockwise. Fires on every Send and Resume. Esc cancels (Q14).
+- **Region 4 — Settings shell** (Q15). When entering Settings, the entire sidebar swaps to a Settings nav rail (`← Back to text` + Appearance / Timing / Advanced); the main column shows the active section's pane. Sections render through `<SettingsSection title help? card?>` (Q17): h2 title + optional `?` info icon (lucide `Info` with native tooltip) + card-wrapped content (`--bg-elevated`, hairline border, soft shadow, 16px padding). Reset to defaults lives in Advanced and inline-confirms (D-06 pattern).
 
-### What's gone vs v1
-- Region indicator + calibrate flow + region_picker overlay
-- Lines indicator (line-length pre-check) + offending-line highlights
-- Per-chunk visual states (untouched / in-progress / pass / fail / stopped)
-- Inline failed-chunk diff renderer + Skip / Stop / Continue UX
-- Auto-scroll-to-in-progress-chunk
+### Region 1 detail (current — single sidebar pre-v2-8)
 
-Settings pane (Q13): four dials (`event_pause_ms`, `mod_hold_ms`, `warmup_shift`, `COUNTDOWN_SECS`). See Q13.
+Pre-v2-8 sidebar has three vertical zones:
 
-### Style references
-- **Notion** — left workspace nav, main canvas
-- **Linear** — left rail with sections + bottom user/settings affordance
-- **Claude Desktop** — left conversation history, main panel with sticky-bottom input
+```
+┌──────────────────────┐│  ← right edge: 4px invisible drag handle
+│  Keystream           │   (Q19 — implementation pending in v2-9)
+│  ─────────────────   │
+│  📄 Current text     │  TOP region (fixed)
+│  ⊕ Load file…        │
+│  🗑 Clear            │  ← inline-confirms on click (D-06)
+│                      │
+│  HISTORY             │  MIDDLE — placeholder text only
+│  Sent texts will…    │
+│                      │
+│  ─────────────────   │
+│  ⚙ Settings          │  BOTTOM (fixed)
+│  v0.1.0              │
+└──────────────────────┘
+```
 
-The pattern is: action controls anchor to their content (action bar bottom of main, not bottom of window); the sidebar holds nav-like things (settings, history, profiles); no global app footer.
+**Region 1 redesign (v2-9 + v2-8 pending):** Q19 adds a drag handle for resize; Q18 replaces the Document/History groups with `Open file` + `Open folder` fixed-top buttons and a VSCode-style file-tree explorer in the middle. See Q18 below for the explorer's full contract and Q19 for the resize contract.
 
 ## Locked Decisions
 
-Decisions below are load-bearing. Ordering preserved chronologically. Q4–Q11 are retired in v2 (kept here as historical record); the keystroke fundamentals (Q1, Q2, Q3) and the v2 additions (Q12, Q13) are the live design.
+Append-only. Q4–Q11 are RETIRED in v2 (the v1 OCR-pipeline decisions). Live decisions below — shipped phases get a one-line summary; pending phases get full detail.
 
-### Q1 — Sender uses CGEvent with virtual keycodes, not unicode injection
+### Shipped (v2-1 through v2-7)
 
-**Status:** active in v2.
+- **Q1 — CGEvent + virtual keycodes, never unicode injection.** The RDP client we tested silently ignores `CGEventKeyboardSetUnicodeString` and forwards only the keycode. Keymap: US-ANSI Carbon HIToolbox keycodes. See `typer-core/src/keymap.rs`.
+- **Q2 — Shift uses the cliclick raw-keycode recipe, not `CGEventFlags`.** Plain `keyDown(shift) → keyDown(char) → keyUp(char) → keyUp(shift)` with `event_pause_ms` sleeps. `setFlags(CGEventFlagShift)` does not survive RDP — every shifted char comes out unshifted. See `typer-core/src/sender.rs::send_char`.
+- **Q3 — Shift warmup during countdown.** One dummy shift keyDown/keyUp pair before the first character. Always on. ~70ms invisible cost; defends against modifier-state edge cases. See `typer-core/src/sender.rs::warmup_shift`.
+- **Q4–Q11 — RETIRED.** v1 OCR pipeline decisions (verify, fold, LCS align, chunked send, line-length check, fail UX, auto-rollback). Made obsolete by Q12. Findings preserved in `lessons.md`.
+- **Q12 — `CGEventSourceStateID::Private` event source.** *The* v2 change. `Combined` mixes injected events with the user's physical keyboard state and corrupts modifier tracking under sustained typing. `Private` gives our injection an isolated state machine. One-line change in `typer-core/src/event_source.rs::session_default()`. Validated 0/45,051 chars on AVD. See `lessons.md` "poc2 — keystroke injection method" entry.
+- **Q13 — Four user-tunable timing knobs.** `event_pause_ms` (default 10ms, floor 5/RDP-7), `mod_hold_ms` (10ms), `warmup_shift` (true), `countdown_secs` (3). Source state, tap location, event shape are HARDCODED — never expose. See `typer-core/src/config.rs`.
+- **Q14 — Three control verbs (Send / Pause / Stop).** Backend tri-state `SendControl` (`Running` / `PauseRequested` / `StopRequested`). Resume = `run_send` with `start_offset = paused_position` (not a separate command). Both Send and Resume re-run the countdown. Stop resets position to 0. See `typer-core/src/control.rs`.
+- **Q15 — Settings shell with sidebar nav (Appearance / Timing / Advanced).** Settings replaces the main sidebar with a nav rail. Default landing tab: Appearance. Five palette profiles + Light/Dark/System + UI scale. Settings persist to `<app_data_dir>/settings.json`. Schema includes `appearance: { profile, mode, fontSize }` with `#[serde(default)]` back-compat. See `src-tauri/src/settings.rs`.
+- **Q16 — Text panel gutter shared across edit and lock modes; soft-wrap disabled.** Both modes render `<gutter><content>` with the gutter line-height anchored to the content row metric (`13px × 1.6 = 20.8px`). Edit mode uses scroll-sync (`onScroll` mirrors `scrollTop`). `white-space: pre` + `overflow-x: auto` everywhere — visual line count = physical line count. See `src/components/text-panel.tsx`.
+- **Q17 — Settings sections render through `<SettingsSection title help? card?>` primitive.** Title row = h2 14px medium. Optional info icon via lucide `Info` with native `title` tooltip. Card-wrapped content (`--bg-elevated`, hairline border, soft shadow, 16px padding). `card={false}` opts out for self-shelled children. Section spacing: `space-y-5`. See `src/components/settings/section-primitives.tsx`.
 
-**Decision:** On macOS, keystrokes are posted via `CGEvent::new_keyboard_event` with US-ANSI Carbon HIToolbox keycodes. Unicode injection (`CGEventKeyboardSetUnicodeString`) is never used.
+### Pending — full spec for fire time
 
-**Why:** The RDP client we tested against (Microsoft's "Windows App") silently ignores the unicode string and forwards only the virtual keycode. A test with `CGEventKeyboardSetUnicodeString` set to "Hello world" + keycode 0 produced 11 `a`s in the remote VM's Notepad. Keycodes work; unicode does not.
+#### Q18 — File explorer sidebar (VSCode-style, replaces History) — Phase v2-8
 
-**Source:** [`docs/poc/typer/src/keymap.rs`](poc/typer/src/keymap.rs).
+**Decision:** The sidebar's middle region becomes a VSCode-style file explorer. Legacy `Document` group (Current text / Load file / Clear) and `History` placeholder are removed. Sidebar gains two fixed-top action buttons (`⬆ Open file`, `⊞ Open folder`) and one scrollable explorer panel below them.
 
-### Q2 — Shift uses the cliclick raw-keycode recipe, not `CGEventFlags`
+**Tree contract:**
 
-**Status:** active in v2. Re-confirmed by poc2 (every `setFlags(CGEventFlagShift)` permutation catastrophically fails on AVD).
+- **Per-folder collapse.** Every folder row has `▾` (open) / `▸` (collapsed) chevron. Click row OR chevron toggles. Files have no chevron; click selects-and-loads.
+- **Indent.** +12px per nesting level. Files reserve a 14px chevron-spacer so file/folder columns align.
+- **Row height.** 22px (denser than the 36px fixed rail rows).
+- **Selection visual.** Active file row: `bg-bg-active` + 3px `accent` left edge bar.
+- **Hover.** `bg-bg-hover`, instant.
 
-**Decision:** Shifted characters are sent via plain `keyDown(shift) → keyDown(char) → keyUp(char) → keyUp(shift)` with `event_pause_ms` sleeps between events. No `CGEventFlags::CGEventFlagShift`, no `flagsChanged` events.
+**Icon system:** lucide-react, monochrome outline 14×14, with **per-extension tints**. Brand-color tints (e.g. `#3178c6` for TS, `#dea584` for Rust) preserve "I can recognize this from the icon" without bundling a 200KB icon font. Generic-text fallback uses `FileText` in `--fg-tertiary`. Non-text files render `FileX` in `--fg-quaternary`, **non-clickable** (cursor: not-allowed). Folders use `FolderOpen` (expanded) / `Folder` (collapsed) in `--fg-secondary`.
 
-**Why:** Apple's flag-based approach does not survive the RDP hop. poc2 tested every source × tap permutation with `setFlags`; all produced 100% catastrophic shift-drops on AVD (every shifted char came out unshifted). The cliclick keycode-sandwich shape is the only RDP-survivable variant.
+| Extensions | lucide icon | Tint |
+|---|---|---|
+| `.ts`, `.tsx` | `FileCode2` | `#3178c6` (TS blue) |
+| `.js`, `.jsx`, `.mjs` | `FileCode2` | `#f7df1e` (JS yellow) |
+| `.rs` | `FileCode2` | `#dea584` (Rust orange) |
+| `.py` | `FileCode2` | `#3572a5` (Python blue) |
+| `.go` | `FileCode2` | `#00add8` (Go cyan) |
+| `.json`, `.json5`, `.jsonc` | `Braces` | `--fg-tertiary` |
+| `.yaml`, `.yml`, `.toml` | `Settings2` | `--fg-tertiary` |
+| `.md`, `.markdown` | `FileText` | `--fg-secondary` |
+| `.html`, `.htm` | `Code2` | `#e34c26` |
+| `.css`, `.scss`, `.less` | `Palette` | `#264de4` |
+| `.sh`, `.bash`, `.zsh` | `Terminal` | `--fg-secondary` |
+| `Dockerfile` | `Container` | `#0db7ed` |
+| `.env*` | `KeyRound` | `--warn` |
+| Generic text fallback | `FileText` | `--fg-tertiary` |
+| Non-text | `FileX` | `--fg-quaternary` (inert) |
+| Folder open / closed | `FolderOpen` / `Folder` | `--fg-secondary` |
 
-**Source:** [`docs/poc/typer/src/main.rs`](poc/typer/src/main.rs) `send_char()`. Re-confirmed: [`docs/poc2-results.md`](poc2-results.md).
+**Text-file allowlist:** the same `TEXT_FILE_EXTENSIONS` constant used by `Open file` (`txt, md, log, rs, ts, tsx, js, jsx, py, go, json, yml, yaml, toml`) governs which tree rows are clickable. Non-text appears in the tree (so the user sees the folder honestly) but is dimmed and inert.
 
-### Q3 — Shift warmup during countdown
+**Hidden / skipped paths:** filtered Rust-side, never reach the frontend — `.git`, `node_modules`, `target`, `.next`, `.svelte-kit`, `.DS_Store`, `.vscode`, `.idea`. Hard-coded in v2-8.
 
-**Status:** active in v2 (kept defensively; warmup may be redundant with Q12 but the cost is negligible).
+**Depth + node caps:** Rust traversal stops at 6 levels deep; per-folder it caps at 500 nodes. Both render a non-clickable `(+N more)` truncation row when hit. Prevents runaway memory / time on accidental wide opens (e.g. somebody opens `~/`).
 
-**Decision:** Before the first character of a send, while the countdown is displaying, send one dummy shift keyDown/keyUp pair (`mod_hold_ms` hold, `WARMUP_SETTLE_MS` settle). Always on.
+**Rescan policy:** manual only. No live filesystem watcher. Re-reading a folder = clicking `Open folder` again.
 
-**Why:** Without warmup against the original Combined-source config, the first shifted character of a session often dropped (`Hello` → `hello`). With Q12's Private source the symptom doesn't reproduce, but the warmup adds ~70ms of dummy keystrokes during a window where the user is already waiting for the countdown — invisible cost, free safety.
+**Selection → main-area transition:**
 
-**Source:** [`docs/poc/typer/src/main.rs`](poc/typer/src/main.rs) `warmup_shift()`.
+1. Click a clickable text file → backend `read_text_file(path)` → `setText(contents)`.
+2. Frontend forces `setLocked(false)` — files always open in **edit mode** (Q14 invariant: only locked text can be sent).
+3. App state stays `idle`. Send button stays disabled until the user clicks Lock.
+4. Switching to a different file while in unlocked edit mode discards in-app edits silently — the file on disk is the source of truth.
 
-### Q4–Q11 — RETIRED
+**Persistence:** last-opened folder, currently-loaded file, and per-folder collapse state are saved to `<app_data_dir>/state.json` (separate from `settings.json` because state is ephemeral context, not user preference). Restored on launch. New Tauri commands `get_state` / `save_state`.
 
-These v1 decisions (OCR pipeline, scrolling for OCR, LCS alignment, chunked verify, line-length check, per-chunk pass criterion, fail-and-surface UX, auto-rollback) are no longer applicable in v2. Q12 made them unnecessary.
+**Single-file mode:** if the user opens just one file via `Open file`, the explorer renders that single file as a one-row "tree" without any folder hierarchy. Same row geometry, no chevron-spacer.
 
-The full text of Q4–Q11 is preserved in the git history (commit before the v2 design rewrite) and the *findings* live on:
-- The "no flags over RDP" rule (was in Q2's reasoning) → reaffirmed in Q2 above
-- The OCR fold-table failures and LCS alignment work → archived in [`docs/poc/`](poc/) reference materials and `lessons.md`
-- Q11's delete-primitive probe → kept as future work in case auto-correction returns; see `lessons.md` 2026-04-24 entry
+**Why no live watcher / why no soft-wrap:** v2-8 ships the 80% case (folder of <500 files, <6 levels deep, no symlink loops, no live edits) and falls back gracefully on the 20%. Bigger workflows route through "open one file at a time."
 
-### Q12 — Use `CGEventSourceStateID::Private` for the event source
+#### Q19 — User-resizable sidebar width — Phase v2-9
 
-**Status:** active in v2. **The key v2 change.**
+**Decision:** Both the main `Sidebar` and the `SettingsSidebar` (Q15) support user-controlled width via a drag handle on the right edge. Width is persisted across sessions.
 
-**Decision:** Construct the `CGEventSource` with `CGEventSourceStateID::Private`, not `CombinedSessionState`. Tap location stays at `Session` (default).
+**Geometry:**
 
-**Why:** v1 used `CombinedSessionState`, which mixes our injected events with the user's physical keyboard state. Under sustained typing this corrupts modifier tracking and intermittently drops shift, surfacing as the v1 live-AVD smoke shift-drop pattern (`(` → `9`, `Q` → `q`, etc.). `Private` source gives our injection an isolated modifier-state machine. poc2 validated 0 / 45,051 chars across three 15k-char runs on AVD/Notepad with this single change.
+- **Default:** 260px (unchanged from current).
+- **Range:** 180px floor to 600px ceiling. Outside-range values clamped on commit.
+- **Drag handle:** 4px-wide invisible strip absolutely positioned at the sidebar's right edge (`absolute right-0 inset-y-0 w-1 cursor-col-resize`). Mouse-down captures, mouse-move updates live, mouse-up persists.
+- **Double-click reset:** double-clicking the handle resets to 260px and persists.
+- **Hover affordance:** subtle `bg-accent/30` tint on hover so users can find the handle. Otherwise invisible.
 
-This is a one-line change in `typer-core/src/event_source.rs::session_default()`. The event shape (cliclick sandwich, Q2) is unchanged, so all existing trait infrastructure and tests apply unchanged.
+**Width source:**
 
-**Why not flag-on-char (KeePassXC pattern):** poc2 confirmed this fails 100% on AVD — RDP forwarder strips `CGEventFlags`. Locally clean, AVD catastrophic.
-**Why not HID tap location:** poc2 showed tap layer alone doesn't fix the shift-drop; it's the source state that matters.
+- CSS custom property `--sidebar-width: 260px` on `:root`.
+- Sidebar `<aside>` uses `style={{ width: 'var(--sidebar-width)' }}` instead of a Tailwind width class.
+- During an active drag, the handle writes directly to `document.documentElement.style.setProperty('--sidebar-width', ...)` — bypasses React re-renders. On mouse-up, the final value commits via debounced `saveSettings()`.
 
-**Source:** [`docs/poc2-results.md`](poc2-results.md).
+**Persistence:** new field `sidebarWidthPx: u64` in `SettingsCfg`. `#[serde(default = "default_sidebar_width")]` returns `260` for v2-7-era files lacking the field. Same back-compat shape as the `appearance` field from Q15.
 
-### Q13 — Four user-tunable timing knobs; everything else hardcoded
+**Why both sidebars share the value:** there's a single visible sidebar at any time. One width applied to whichever sidebar is mounted is simpler than two values that desync.
 
-**Status:** active in v2.
+**Why 180 floor:** below this, the action buttons start truncating their labels. Below ~150 the wordmark also clips.
 
-**Decision:** Settings surface exposes exactly four dials:
-
-| Knob | Default | Floor | Notes |
-|---|---|---|---|
-| `event_pause_ms` | 10ms | 7ms (AVD) / 5ms (local) | Primary speed knob. Sleeps after every key down/up. Below floor, shift state latches stuck-on. |
-| `mod_hold_ms` | 10ms | untested below 10ms with Q12 | Sleep between shift-down and char-down (and char-up and shift-up). Tied to the cliclick recipe. |
-| `warmup_shift` | true | — | See Q3. Boolean toggle. |
-| `COUNTDOWN_SECS` | 3s | — | Pre-send countdown. UX preference, not a reliability dial. |
-
-Hardcoded:
-- Source state = `Private` (Q12 — never expose; switching to Combined re-introduces the bug)
-- Tap = `Session` (Q12)
-- Event shape = cliclick sandwich (Q2)
-
-Removed:
-- `char_pause_ms` (poc2 sweep showed no effect; default was 0)
-- `jitter_ms` (PoC anti-detection vestige, irrelevant for AVD)
-- `MAX_LINE_CHARS` (Q8 retired; without OCR there is no horizontal-scroll concern)
-- `CHUNK_SIZE_LINES`, `CHUNK_VERIFY_SETTLE_MS`, `SCROLL_*`, `VERIFY_PASS_THRESHOLD` (all OCR-related, retired)
-
-**Source:** [`docs/poc2-results.md`](poc2-results.md) speed sweep.
-
-### Q14 — Three control verbs: send, pause, stop. Resume is "send from offset"
-
-**Status:** active in v2.
-
-**Decision:** The send loop responds to a tri-state control flag — `running` / `pause_requested` / `stop_requested`. The frontend exposes three control verbs; Resume is not a separate command:
-
-- **Send** — invoke `run_send(start_offset=0)`. Initial run from the beginning.
-- **Pause** — invoke `pause_send()`. The loop halts at the next char boundary, holds position, emits `send-paused {position}`.
-- **Resume** — invoke `run_send(start_offset=paused_position)`. Re-runs the same flow starting from the held position. UX-wise it's a separate button, mechanically it's just `run_send` with an offset.
-- **Stop** — invoke `stop_send()`. The loop halts, position resets to 0, emits `send-stopped {position}`. Next Send starts from the beginning.
-
-Both Send and Resume re-run the `COUNTDOWN_SECS` countdown so the user can re-focus the AVD window before typing resumes. The countdown overlay covers the whole window during this period.
-
-**Why three verbs, not two:**
-
-- **Pause vs Stop are different intents.** Pause = "I need to do something else for a moment, pick up where you left off." Stop = "abandon this run, start over if I want to retry." A single combined verb would silently lose user intent.
-- **Resume must re-run the countdown** because the user's AVD focus may have drifted while paused. A countdown-less resume would frequently mis-fire keystrokes into the wrong window.
-- **Resume not separate command** because the backend mechanism is identical to Send — the only difference is `start_offset`. Two commands doing the same thing would invite divergence over time.
-
-**Why not "pause = stop with resume"** (i.e. always start from beginning, ask the user "type all 15k chars again from char 0?"): for long runs (15k chars at 25 ch/s = 10 min) this wastes the user's time when their pause was a 30-second interruption. Resume-from-position is a major UX win.
-
-**Backend implementation note:** the cancel mechanism in `typer-core` becomes a `SendControl` enum (`Running` / `PauseRequested` / `StopRequested`) wrapped in `Arc<Mutex<>>` (or `AtomicU8` with a tiny mapping). The send loop checks at every char boundary. Existing `stop_send` semantics from v1 generalize cleanly.
-
-**Source:** new in v2.
+**Why 600 ceiling:** the default 1280×820 window leaves 680px for the main column at 600 — usable but tight. Beyond that, users should resize the window.
 
 ## Build phases (v2 rewrite)
 
-The v1 phases (1–6 + Phase 2.5) are retired. v2 phases below; see `docs/progress.md` for the live task list.
+The v1 phases (1–6 + Phase 2.5) are retired. v2 phases below — each anchored to its load-bearing Q-decision. Live status + completion tracking lives in [`progress.md`](progress.md).
 
-- **Phase v2-0 — poc2 complete.** Keystroke-injection method survey, AVD validation, speed-floor characterization. Captured in [`docs/poc2-results.md`](poc2-results.md). ✅ done.
-- **Phase v2-1 — Apply the Q12 fix in shipped code.** One-line change in `typer-core/src/event_source.rs::session_default()`. Run `cargo test --workspace` (still 140/140), re-run a short live-AVD smoke against the new binary to confirm the fix in the shipping pipeline. Then we're free to start removing the OCR layer.
-- **Phase v2-2 — Strip OCR + chunking from `typer-core/`, add Q14 control model.** Remove `ocr.rs`, `verify.rs`, `align.rs`, `fold.rs`, `stitch.rs`, `scroll.rs`. Simplify `sender.rs` to drop `send_chunk` (we keep `run_send`). Replace the v1 `AtomicBool` cancel flag with a `SendControl` tri-state (`Running` / `PauseRequested` / `StopRequested`) per Q14. Add `start_offset` parameter to `run_send` for resume. Remove the OCR-related constants from `config.rs`. Remove the Swift `ocr_helper` sidecar source + binary. Update tests.
-- **Phase v2-3 — Strip OCR + chunking from `src-tauri/`, add pause/resume.** Remove `verify_visible`, `scroll_verify`, `calibrate`, `get_region`, `clear_region`, `check_lines`, `send_with_chunked_verify`, `continue_after_fail`. Replace v1 `stop_send` with the tri-verb surface from Q14: `run_send(text, cfg, start_offset)`, `pause_send()`, `stop_send()`. Add `get_settings` / `save_settings` for Q13. Remove the `region_picker` sidecar + capability entries. Update Tauri capabilities allowlist (narrower).
-- **Phase v2-4 — Rewrite the frontend for the locked v2 UI (see "Frontend layout" + Q14).** Two-gate status strip (Text + Accessibility); status strip switches to a progress line during send/pause. Edit/Lock toggle on the text panel. Active-line indicator (subtle blue left-border) updated from `send-progress`. Bottom controls: Send/Pause/Resume single button, Stop button, Settings cog, Edit/Lock toggle. Countdown overlay fires on Send AND Resume. Esc bound to Pause-or-Stop based on current state. Remove the per-chunk visual states, fail-diff renderer, Skip/Stop/Continue UX, region indicator, lines indicator from v1.
-- **Phase v2-5 — Settings pane (Q13).** Four dials surfaced. Persisted to `<app_data_dir>/settings.json`. Defaults reset button.
-- **Phase v2-6 — Polish + ship.** Visual identity, keyboard shortcuts, "About" surfacing the Q12 fix and AVD-tested speed defaults.
+| Phase | Anchor | One-line scope |
+|---|---|---|
+| v2-0 | `lessons.md` poc2 entry | Keystroke-injection method survey + RDP validation. |
+| v2-1 | Q12 | Apply the `Private` source-state fix in shipped code. |
+| v2-2 | Q14 | Strip OCR / chunking from `typer-core/`; add SendControl tri-state. |
+| v2-3 | Q14 | Strip OCR / chunking from `src-tauri/`; add tri-verb command surface. |
+| v2-4 | Q14, visual contract | Rewrite frontend for the v2 UI. |
+| v2-5 | Q13 | Settings pane — 4 dials + persistence. |
+| v2-7 | Q15, Q17 | Settings shell with sidebar nav + Appearance section. |
+| v2-9 | Q19 | User-resizable sidebar width. Runs before v2-8. |
+| v2-8 | Q18 | VSCode-style file explorer sidebar. Depends on v2-9. |
+| v2-6 | — | Polish + ship. Runs last; depends on v2-9 + v2-8. |
+
+For any pending phase, the implementation plan is drafted by `/dev-task` at fire time using the anchor Q-decision as the spec.
 
 ## Future work (deferred from v2)
 
 - **Cross-platform.** Linux (`ydotool` / `xdotool`) and Windows (`SendInput`). Each is a separate research round; method behavior on those platforms is unknown.
-- **Auto-correction.** v1's Q11 work (Shift+Up × N + Backspace as a delete primitive) was validated on AVD. If v2's "type and stop" model ever needs a verify mode again — e.g. for higher-error environments like Citrix or VMware Horizon — the delete primitive is ready to slot in.
-- **Re-test other RDP/VDI clients.** All v2 validation was Microsoft Windows App on AVD. Citrix, VMware Horizon, Parallels Client, etc. may behave differently.
-- **Per-VM speed profile.** Settings pane (Q13) has the dials; a future enhancement could let users save named profiles ("AVD slow", "Citrix fast", etc.) and pick at send time.
+- **Auto-correction / delete primitive.** v1's Q11 work (Shift+Up × N + Backspace) was validated on AVD. If a higher-error environment ever forces a verify mode again, the primitive is documented in `lessons.md`.
+- **Re-test other RDP/VDI clients.** All v2 validation was Microsoft Windows App on AVD. Citrix, VMware Horizon, Parallels Client may behave differently.
+- **Per-VM speed profiles.** Q13 dials are global today; per-target named profiles ("AVD slow", "Citrix fast") are a possible future addition.
+- **Live filesystem watcher** for the file explorer (Q18). Manual rescan only in v2-8.
+- **D-01 — global hotkeys** for Pause/Stop while RDP has focus (deferred; tracked in `backlog.md`).

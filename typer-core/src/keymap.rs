@@ -141,7 +141,7 @@ mod tests {
     /// chars in the real run, the mapping must cover every char in it.
     #[test]
     fn corpus_chars_all_map_to_keycodes() {
-        let corpus = include_str!("../../docs/poc/samples/code_corpus.txt");
+        let corpus = include_str!("../../tests/fixtures/code_corpus.txt");
         let mut unmapped: Vec<char> = Vec::new();
         for ch in corpus.chars() {
             let c = ch as u32;

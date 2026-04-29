@@ -91,12 +91,6 @@ Logging "sent 1832 chars" is fine. Logging the actual chars is a security findin
 - Shift warmup (one dummy shift press/release during countdown) is mandatory before the first shifted character. Do not remove.
 - `scroll_verify` uses PageUp × 40 to reach the top, not Ctrl+Home — Ctrl+Home posted via CGEvent does not reach the remote VM through the RDP clients we've tested. Documented in `docs/lessons.md`.
 
-## OCR tolerance
-
-- When comparing sent vs. seen, fold known OCR confusions before diff: `` ` `` ↔ `'`, `<` ↔ `‹`, `>` ↔ `›`, `"` ↔ `"` ↔ `"`, case-fold letters, `0`/`O`/`o` → one class, `1`/`l`/`I`/`i` → one class.
-- Never "fix" our sender to match OCR output. If the VM shows the right character but OCR misreads it, the fold table handles it.
-- When adding a new fold entry, add a comment citing the specific OCR failure observed (corpus + line + what we sent vs. what Vision read). Cross-reference a capture in `docs/poc/results/` if the failure is reproducible there. Future readers need to tell genuine typing errors from OCR noise.
-
 ## Commits
 
 - Stage specific files with `git add`, never `-A` — prevents accidentally committing secrets or sandbox captures.

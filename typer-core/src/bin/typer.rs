@@ -101,7 +101,7 @@ fn do_send(
     let control = SendControlFlag::new();
 
     do_countdown(countdown);
-    let outcome = run_send(&src, &content, &cfg, &control, start_offset)?;
+    let outcome = run_send(&src, &content, &cfg, &control, start_offset, None)?;
 
     let exit = match outcome.reason {
         ExitReason::Completed => "completed".to_string(),

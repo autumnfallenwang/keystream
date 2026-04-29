@@ -16,7 +16,7 @@ A desktop app that types text into virtual desktops and remote-desktop sessions 
 
 ## Status
 
-Early PoC. The typing-and-verify pipeline is stable (proven on a real remote VM). The Tauri UI wrapping it is under active construction. Upstream lineage and measurements live in [`docs/poc/`](docs/poc/) — Rust CLI sources, Swift OCR sidecars, the sample corpus used for stress tests, captured OCR results, and the original Python predecessor.
+v2 in active development. The keystroke sender is byte-perfect on AVD (validated 0 / 45,051 chars across 3 × 15k-char runs); v2 strips the v1 OCR-verify pipeline and ships a linear "type and stop" model. Architecture, locked decisions, and historical lessons live in [`docs/`](docs/).
 
 ## Development
 

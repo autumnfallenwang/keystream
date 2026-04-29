@@ -7,7 +7,7 @@ Review code changes for security vulnerabilities. The detailed rules are in `.cl
 For each changed file, verify compliance with these rule categories:
 
 ### Live-session artifacts
-Check against `.claude/rules/security.md` "Live-session artifacts" section. Flag any committed screenshots, OCR JSON, or keystroke logs that may have come from a real remote-VM run rather than a synthetic / local-editor capture. `sandbox/` must never be tracked. `docs/poc/results/` is limited to the stress-run capture tied to the regression fixture (shows only the authored corpus).
+Check against `.claude/rules/security.md` "Live-session artifacts" section. Flag any committed screenshots, OCR JSON, or keystroke logs that may have come from a real remote-VM run rather than a synthetic / local-editor capture. `sandbox/` must never be tracked. Fixtures under `tests/fixtures/` must be synthetic or scrubbed.
 
 ### Target-content exfiltration
 Check against `.claude/rules/security.md` "Target window content" section. Flag any call site that sends screenshots, OCR output, or text content to an external service (network, LLM, crash reporter, analytics). Also flag `log::info!` / `await log(...)` statements that include the actual characters sent or OCR'd — counts and lengths are fine, content is a finding.

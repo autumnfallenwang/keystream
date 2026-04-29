@@ -5,9 +5,12 @@ import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { ActionBar } from "@/components/action-bar";
 import { CountdownOverlay } from "@/components/countdown-overlay";
 import { MainHeader } from "@/components/main-header";
-import { SettingsPage } from "@/components/settings-page";
+import { SettingsShell } from "@/components/settings-shell";
+import { SettingsSidebar, type SettingsTab } from "@/components/settings-sidebar";
 import { Sidebar } from "@/components/sidebar";
+import { ThemeProvider } from "@/components/theme-provider";
 import { type AppEvent, type AppState, isTextLocked, reduce } from "@/lib/core/app-state";
+import { APPEARANCE_DEFAULT } from "@/lib/core/appearance";
 import { allGatesPass, computeGates } from "@/lib/core/gates";
 import {
   checkPermissions,
@@ -38,6 +41,7 @@ const DEFAULT_SETTINGS: Settings = {
   modHoldMs: 10,
   warmupShift: true,
   countdownSecs: 3,
+  appearance: APPEARANCE_DEFAULT,
 };
 
 const TextPanel = dynamic(() => import("@/components/text-panel").then((m) => m.TextPanel), {
@@ -50,6 +54,7 @@ export default function Home() {
   const [locked, setLocked] = useState(false);
   const [permissions, setPermissions] = useState<Permissions | null>(null);
   const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS);
+  const [settingsTab, setSettingsTab] = useState<SettingsTab>("appearance");
   const [appState, dispatch] = useReducer(
     (state: AppState, event: AppEvent) => reduce(state, event),
     { mode: "idle" } as AppState,
@@ -157,6 +162,9 @@ export default function Home() {
     void (async () => {
       const channel = createSendChannel((event: SendEvent) => {
         switch (event.event) {
+          case "sendProgress":
+            dispatch({ kind: "ipcSendProgress", charsTyped: event.data.charsTyped });
+            return;
           case "sendComplete":
             dispatch({
               kind: "ipcSendComplete",
@@ -219,7 +227,13 @@ export default function Home() {
   }, [appState]);
 
   const gates = computeGates({ text, locked, permissions });
-  const canSend = allGatesPass(gates) && appState.mode === "idle";
+  // Send is enabled in any "not actively running" state: idle, done
+  // (after a complete send), or stopped (after Stop from sending or
+  // paused). Mirrors the reducer's `sendClicked` accept-set in
+  // `src/lib/core/app-state.ts` — keep these in sync.
+  const canSend =
+    allGatesPass(gates) &&
+    (appState.mode === "idle" || appState.mode === "done" || appState.mode === "stopped");
 
   const handleLoadFile = useCallback(() => {
     void (async () => {
@@ -261,9 +275,13 @@ export default function Home() {
   }, []);
 
   const handleSend = useCallback(() => {
-    void log(`page: send_clicked chars=${text.length}`);
-    dispatch({ kind: "sendClicked", totalChars: text.length });
-  }, [text]);
+    void log(`page: send_clicked chars=${text.length} countdown_secs=${settings.countdownSecs}`);
+    dispatch({
+      kind: "sendClicked",
+      totalChars: text.length,
+      countdownSecs: settings.countdownSecs,
+    });
+  }, [text, settings.countdownSecs]);
 
   const handlePause = useCallback(() => {
     void log("page: pause_clicked");
@@ -273,9 +291,9 @@ export default function Home() {
   }, []);
 
   const handleResume = useCallback(() => {
-    void log("page: resume_clicked");
-    dispatch({ kind: "resumeClicked" });
-  }, []);
+    void log(`page: resume_clicked countdown_secs=${settings.countdownSecs}`);
+    dispatch({ kind: "resumeClicked", countdownSecs: settings.countdownSecs });
+  }, [settings.countdownSecs]);
 
   const handleStop = useCallback(() => {
     void log("page: stop_clicked");
@@ -289,6 +307,7 @@ export default function Home() {
   }, [appState]);
 
   const handleOpenSettings = useCallback(() => {
+    setSettingsTab("appearance");
     dispatch({ kind: "openSettings" });
   }, []);
 
@@ -323,62 +342,74 @@ export default function Home() {
   const showCountdown = appState.mode === "countdown";
 
   return (
-    <div className="flex h-screen bg-canvas text-fg">
-      <Sidebar
-        onLoadFile={handleLoadFile}
-        onClear={handleClear}
-        clearDisabled={text.length === 0}
-        onOpenSettings={handleOpenSettings}
-        inSettings={inSettings}
-        appVersion={APP_VERSION}
-      />
-      <main className="flex flex-1 flex-col overflow-hidden">
+    <>
+      <ThemeProvider appearance={settings.appearance} />
+      <div className="flex h-screen bg-canvas text-fg">
         {inSettings ? (
-          <SettingsPage
-            settings={settings}
-            onChange={handleSettingsChange}
-            onReset={handleSettingsReset}
+          <SettingsSidebar
+            activeTab={settingsTab}
+            onTabChange={setSettingsTab}
             onBack={handleCloseSettings}
+            appVersion={APP_VERSION}
           />
         ) : (
-          <>
-            <MainHeader
-              state={appState}
-              textLoaded={text.length > 0}
-              textCharCount={text.length}
-              accessibilityGranted={permissions?.accessibility ?? false}
-              locked={locked}
-              totalChars={text.length}
-              onTextGateClick={handleTextGate}
-              onAccessibilityGateClick={handleAccessibilityGate}
-              onToggleLocked={handleToggleLocked}
-            />
-            <TextPanel
-              text={text}
-              locked={locked}
-              state={appState}
-              onTextChange={setText}
-              onLoadFile={handleLoadFile}
-            />
-            <ActionBar
-              state={appState}
-              canSend={canSend}
-              totalChars={text.length}
-              onSend={handleSend}
-              onPause={handlePause}
-              onResume={handleResume}
-              onStop={handleStop}
-            />
-          </>
+          <Sidebar
+            onLoadFile={handleLoadFile}
+            onClear={handleClear}
+            clearDisabled={text.length === 0}
+            onOpenSettings={handleOpenSettings}
+            inSettings={inSettings}
+            appVersion={APP_VERSION}
+          />
         )}
-      </main>
-      {showCountdown && (
-        <CountdownOverlay
-          remaining={appState.remaining}
-          totalSecs={settings.countdownSecs}
-          onCancel={handleCountdownCancel}
-        />
-      )}
-    </div>
+        <main className="flex flex-1 flex-col overflow-hidden">
+          {inSettings ? (
+            <SettingsShell
+              settings={settings}
+              onChange={handleSettingsChange}
+              onReset={handleSettingsReset}
+              activeTab={settingsTab}
+            />
+          ) : (
+            <>
+              <MainHeader
+                state={appState}
+                textLoaded={text.length > 0}
+                textCharCount={text.length}
+                accessibilityGranted={permissions?.accessibility ?? false}
+                locked={locked}
+                totalChars={text.length}
+                onTextGateClick={handleTextGate}
+                onAccessibilityGateClick={handleAccessibilityGate}
+                onToggleLocked={handleToggleLocked}
+              />
+              <TextPanel
+                text={text}
+                locked={locked}
+                state={appState}
+                onTextChange={setText}
+                onLoadFile={handleLoadFile}
+              />
+              <ActionBar
+                state={appState}
+                canSend={canSend}
+                totalChars={text.length}
+                onSend={handleSend}
+                onPause={handlePause}
+                onResume={handleResume}
+                onStop={handleStop}
+              />
+            </>
+          )}
+        </main>
+        {showCountdown && (
+          <CountdownOverlay
+            remaining={appState.remaining}
+            totalSecs={settings.countdownSecs}
+            onCancel={handleCountdownCancel}
+          />
+        )}
+      </div>
+    </>
   );
 }

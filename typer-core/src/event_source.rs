@@ -29,10 +29,10 @@ impl RealEventSource {
     /// state with `Session` tap location. Locked decision Q12 — the
     /// `CombinedSessionState` default mixes our injected events with the
     /// user's physical keyboard state and corrupts modifier tracking under
-    /// sustained typing, surfacing as intermittent shift-drops on AVD/RDP
+    /// sustained typing, surfacing as intermittent shift-drops on RDP
     /// targets. `Private` gives our injection an isolated modifier-state
-    /// machine. Validated 0 / 45,051 chars across 3 × 15k-char runs on
-    /// AVD/Notepad — see [`docs/poc2-results.md`].
+    /// machine. Validated 0 / 45,051 chars across 3 × 15k-char runs into
+    /// Notepad over an RDP session — see [`docs/lessons.md`] (poc2 entries).
     ///
     /// Lets callers outside `typer-core` (Tauri commands, CLI shim)
     /// construct an event source without pulling in `core-graphics` as a

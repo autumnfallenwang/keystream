@@ -3,8 +3,7 @@
 ## Live-session artifacts
 
 - Anything captured from a real remote-desktop session (any VM, any RDP client) — screenshots of the target screen, OCR JSON produced from those screenshots, recorded keystroke logs from real user work — goes in `sandbox/` (gitignored). Never committed.
-- Fixtures committed under `tests/fixtures/` must be **synthetic or scrubbed**: generated OCR JSON from a toy file, keystroke logs against a local text editor, screenshots of dummy text. No snapshots of real work content.
-- `docs/poc/results/` contains the one stress-run capture (`stress1_avd.png` + `stress1_ocr.json`) that serves as the regression fixture. It shows only the sample corpus we authored. Do not add new captures here unless they are similarly synthetic and directly tied to a regression test.
+- Fixtures committed under `tests/fixtures/` must be **synthetic or scrubbed**: keystroke logs against a local text editor, code snippets we authored, screenshots of dummy text. No snapshots of real work content.
 
 ## Target window content
 

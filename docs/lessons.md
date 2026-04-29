@@ -52,11 +52,11 @@ Both `Ctrl+Z once` and `Ctrl+Z × 5` cleanly removed the test block in AVD + Not
 
 During the `delete-ctrl-z-five` probe the operator observed a brief `#` character flash in the editor before disappearing. Most likely cause: the editor's undo implementation momentarily re-renders a character during the rapid-fire Ctrl+Z sequence (undo replays the typed chars in reverse, and at ~50ms between presses the render pipeline can show a transient glyph). Not caused by our keystroke stream; not seen in the other four probes. Documented here so a future observer doesn't mistake it for residue.
 
-## 2026-04 · poc2 — keystroke injection method (full study at `docs/poc2-results.md`)
+## 2026-04 · poc2 — keystroke injection method
 
 ### 2026-04-28 · Use `CGEventSourceStateID::Private`, not `CombinedSessionState`, for sustained typing
 
-The default `Combined` source mixes our injected events with the user's physical keyboard state. Under sustained typing (validated at 15,017 chars + 3 × 15k AVD runs) it corrupts modifier tracking and intermittently drops shift on shifted chars. `Private` source gives our injection an isolated modifier-state machine and the bug disappears. **One-line change in `typer-core/src/event_source.rs::session_default()`.** Confirmed clean on local TextEdit and AVD/Notepad at 0/45,051 chars across 3 runs. See `docs/poc2-results.md` for the full method matrix and AVD screenshots.
+The default `Combined` source mixes our injected events with the user's physical keyboard state. Under sustained typing (validated at 15,017 chars + 3 × 15k AVD runs) it corrupts modifier tracking and intermittently drops shift on shifted chars. `Private` source gives our injection an isolated modifier-state machine and the bug disappears. **One-line change in `typer-core/src/event_source.rs::session_default()`.** Confirmed clean on local TextEdit and AVD/Notepad at 0/45,051 chars across 3 runs.
 
 ### 2026-04-28 · The 2026-04-20 "no `CGEventFlags`" rule still stands — re-confirmed against AVD
 
@@ -69,3 +69,14 @@ Sweeping `event_pause_ms` against the locked Method A: local Mac stays clean dow
 ### 2026-04-28 · AppleScript `keystroke` collapses on AVD at scale (~15k chars)
 
 Tested as an alternative injection path. Works locally at any size. On AVD: small inputs (~250 chars) clean and fast; **at 15k chars loses ~50% of input** even with explicit per-line `delay`. RDP can't keep up with AppleScript's batched event firehose regardless of throttling. Not a viable alternative to CGEvent for our use case. Documented so future readers don't re-explore this branch.
+
+### 2026-04-28 · poc2 — what we explicitly ruled OUT
+
+These branches were tested against AVD and rejected; documented so future readers don't re-explore:
+- **enigo / rdev / tfc crates.** None solves the shift problem on AVD; all use flag-on-char internally. enigo's `text()` API also doesn't translate `\n` → Return.
+- **`setFlags(maskShift)` (KeePassXC pattern).** Catastrophic on AVD — RDP strips `CGEventFlags` regardless of source state or tap location.
+- **`kCGHIDEventTap` tap location alone.** Doesn't fix anything on its own; enigo posts to HID and still fails on AVD because flag-on-char is the underlying issue.
+- **Tuning `MOD_HOLD_MS` higher.** Counterintuitively *worsens* shift-drops with the broken Combined source — longer hold gives modifier state more time to desync.
+- **OCR-side fold band-aids** (e.g. `; ↔ : ↔ . ↔ ,` and `$ ↔ #`) for the shift-drop pattern. Already-reverted before poc2 began; fix the cause, not the symptom.
+
+Cross-platform branches (Linux `xdotool/ydotool`, Windows `SendInput`, Karabiner-DriverKit-VirtualHIDDevice) were explicitly **deferred** to future research rounds, not ruled out.

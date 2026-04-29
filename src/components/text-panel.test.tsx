@@ -29,6 +29,14 @@ describe("TextPanel — edit mode", () => {
     expect(screen.getByText(/drop a file here/i)).toBeInTheDocument();
   });
 
+  it("does not render a gutter in the empty state", () => {
+    render(
+      <TextPanel text="" locked={false} state={idle} onTextChange={vi.fn()} onLoadFile={vi.fn()} />,
+    );
+    // No line numbers when there's no text.
+    expect(screen.queryByText("1")).toBeNull();
+  });
+
   it("Load file button invokes onLoadFile", async () => {
     const onLoadFile = vi.fn();
     render(
@@ -56,6 +64,51 @@ describe("TextPanel — edit mode", () => {
     );
     const ta = screen.getByDisplayValue("hello") as HTMLTextAreaElement;
     expect(ta.tagName).toBe("TEXTAREA");
+  });
+
+  it("D-03: renders the gutter with line numbers in edit mode", () => {
+    render(
+      <TextPanel
+        text={"alpha\nbeta\ngamma"}
+        locked={false}
+        state={idle}
+        onTextChange={vi.fn()}
+        onLoadFile={vi.fn()}
+      />,
+    );
+    expect(screen.getByText("1")).toBeInTheDocument();
+    expect(screen.getByText("2")).toBeInTheDocument();
+    expect(screen.getByText("3")).toBeInTheDocument();
+  });
+
+  it("D-03: edit-mode gutter has no active-line marker (no '→' caret)", () => {
+    render(
+      <TextPanel
+        text={"alpha\nbeta\ngamma"}
+        locked={false}
+        state={idle}
+        onTextChange={vi.fn()}
+        onLoadFile={vi.fn()}
+      />,
+    );
+    // The locked-mode '→ ' caret should never appear in edit mode, even
+    // if the app state happens to be in a sending-like shape.
+    expect(screen.queryByText(/→/)).toBeNull();
+  });
+
+  it("Q16: edit-mode textarea disables soft-wrap (whiteSpace: pre)", () => {
+    render(
+      <TextPanel
+        text={"a very long line that would otherwise wrap"}
+        locked={false}
+        state={idle}
+        onTextChange={vi.fn()}
+        onLoadFile={vi.fn()}
+      />,
+    );
+    const ta = screen.getByDisplayValue(/a very long line/) as HTMLTextAreaElement;
+    expect(ta.style.whiteSpace).toBe("pre");
+    expect(ta.getAttribute("wrap")).toBe("off");
   });
 });
 
@@ -119,5 +172,23 @@ describe("TextPanel — locked mode", () => {
       />,
     );
     expect(screen.queryByTestId("active-line")).toBeNull();
+  });
+
+  it("B-03 / Q16: gutter rows have explicit line-height matching content", () => {
+    // The gutter and content `<pre>` MUST share the same line-height so
+    // the columns align row-for-row. Both are anchored to 20.8px
+    // (= 13 × 1.6) regardless of the gutter's smaller font-size.
+    render(
+      <TextPanel
+        text={"alpha\nbeta\ngamma"}
+        locked={true}
+        state={idle}
+        onTextChange={vi.fn()}
+        onLoadFile={vi.fn()}
+      />,
+    );
+    const lineOne = screen.getByText("1");
+    expect(lineOne.style.lineHeight).toBe("20.8px");
+    expect(lineOne.style.height).toBe("20.8px");
   });
 });

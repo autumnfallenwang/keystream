@@ -61,6 +61,20 @@ describe("ActionBar — primary button label per state", () => {
     expect(onPause).toHaveBeenCalledOnce();
   });
 
+  it("done + canSend=true: Send is enabled (post-completion restart)", () => {
+    // B-01 regression: page.tsx must mark canSend=true in done mode so
+    // the user can fire a fresh send after completion.
+    render(<ActionBar {...defaults({ state: done, canSend: true })} />);
+    expect(screen.getByRole("button", { name: "Send" })).not.toBeDisabled();
+  });
+
+  it("stopped + canSend=true: Send is enabled (post-stop restart)", () => {
+    // B-01 regression: this was the original failure mode — Stop from
+    // paused left Send disabled forever.
+    render(<ActionBar {...defaults({ state: stopped, canSend: true, totalChars: 500 })} />);
+    expect(screen.getByRole("button", { name: "Send" })).not.toBeDisabled();
+  });
+
   it("paused: 'Resume', click invokes onResume", async () => {
     const onResume = vi.fn();
     render(<ActionBar {...defaults({ state: paused, totalChars: 500, onResume })} />);

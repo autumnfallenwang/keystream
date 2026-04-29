@@ -1,8 +1,7 @@
 // Pure state machine for the v2 page. No Tauri / React imports — the
 // reducer is a pure function, fully unit-testable.
 //
-// Drives the modes laid out in docs/v2-frontend-design.md "State machine"
-// and Q14: Send / Pause / Resume / Stop.
+// Drives Q14 (Send / Pause / Resume / Stop) — see docs/design-plan.md.
 
 export type AppState =
   | { mode: "idle" }
@@ -25,13 +24,14 @@ export type AppState =
   | { mode: "settings" };
 
 export type AppEvent =
-  | { kind: "sendClicked"; totalChars: number }
-  | { kind: "resumeClicked" }
+  | { kind: "sendClicked"; totalChars: number; countdownSecs: number }
+  | { kind: "resumeClicked"; countdownSecs: number }
   | { kind: "pauseClicked" }
   | { kind: "stopClicked" }
   | { kind: "countdownTick" }
   | { kind: "countdownFire"; nowMs: number }
   | { kind: "countdownCancelled" }
+  | { kind: "ipcSendProgress"; charsTyped: number }
   | { kind: "ipcSendComplete"; chars: number; skipped: number; durationMs: number }
   | { kind: "ipcSendPaused"; position: number; charsTyped: number; durationMs: number }
   | { kind: "ipcSendStopped"; position: number; charsTyped: number; durationMs: number }
@@ -39,6 +39,8 @@ export type AppEvent =
   | { kind: "openSettings" }
   | { kind: "closeSettings" };
 
+/** Default countdown duration in seconds. Settings UI can override per-send
+ * via the `countdownSecs` field on `sendClicked` / `resumeClicked` events. */
 export const COUNTDOWN_SECS = 3;
 
 /** Pure reducer. Returns `state` unchanged when the event isn't legal in
@@ -49,7 +51,7 @@ export function reduce(state: AppState, event: AppEvent): AppState {
       if (state.mode === "idle" || state.mode === "done" || state.mode === "stopped") {
         return {
           mode: "countdown",
-          remaining: COUNTDOWN_SECS,
+          remaining: event.countdownSecs,
           intent: "send",
           resumeOffset: 0,
         };
@@ -60,7 +62,7 @@ export function reduce(state: AppState, event: AppEvent): AppState {
       if (state.mode === "paused") {
         return {
           mode: "countdown",
-          remaining: COUNTDOWN_SECS,
+          remaining: event.countdownSecs,
           intent: "resume",
           resumeOffset: state.position,
         };
@@ -111,6 +113,15 @@ export function reduce(state: AppState, event: AppEvent): AppState {
     case "countdownCancelled":
       if (state.mode === "countdown") {
         return { mode: "idle" };
+      }
+      return state;
+
+    case "ipcSendProgress":
+      // B-02: live char-count tick from typer-core's progress callback,
+      // throttled at PROGRESS_INTERVAL chars. Drives the active-line
+      // indicator. Only updates while a send is actually running.
+      if (state.mode === "sending") {
+        return { ...state, charsTyped: event.charsTyped };
       }
       return state;
 

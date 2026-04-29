@@ -1,7 +1,7 @@
-//! User settings persistence (Q13 four-dial UI).
+//! User settings persistence (Q13 four-dial UI + Q15 appearance shell).
 //!
 //! Path: `<app_data_dir>/settings.json`. Schema is `SettingsCfg`. Read
-//! at startup; written on every change in the v2-5 settings UI.
+//! at startup; written on every change in the v2-5 / v2-7 settings UI.
 //!
 //! Defaults are pulled from `typer_core::config` constants — single
 //! source of truth. The settings UI in the frontend mirrors these values.
@@ -13,17 +13,43 @@ use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager};
 use typer_core::config::{COUNTDOWN_SECS, DEFAULT_WARMUP_SHIFT, EVENT_PAUSE_MS, MOD_HOLD_MS};
 
-/// Q13 4-dial config. Three of the four (event_pause_ms, mod_hold_ms,
-/// warmup_shift) map onto `typer_core::SendCfg` for the send loop;
-/// `countdown_secs` is consumed by the frontend's pre-send overlay
-/// (Q14: countdown fires on Send and Resume).
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+/// Q15 appearance config — palette profile, light/dark/system mode,
+/// proportional UI scale. The frontend is the source of truth for valid
+/// `profile` and `mode` strings; the backend stores them opaquely.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AppearanceCfg {
+    pub profile: String,
+    pub mode: String,
+    pub font_size: f32,
+}
+
+impl Default for AppearanceCfg {
+    fn default() -> Self {
+        Self {
+            profile: "atelier".into(),
+            mode: "system".into(),
+            font_size: 1.0,
+        }
+    }
+}
+
+/// Q13 4-dial config + Q15 appearance. Three of the four timing fields
+/// (event_pause_ms, mod_hold_ms, warmup_shift) map onto
+/// `typer_core::SendCfg` for the send loop; `countdown_secs` is consumed
+/// by the frontend's pre-send overlay.
+///
+/// `appearance` is `#[serde(default)]` so v2-5 settings.json files
+/// (without the field) load cleanly with default appearance applied.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SettingsCfg {
     pub event_pause_ms: u64,
     pub mod_hold_ms: u64,
     pub warmup_shift: bool,
     pub countdown_secs: u64,
+    #[serde(default)]
+    pub appearance: AppearanceCfg,
 }
 
 impl Default for SettingsCfg {
@@ -33,6 +59,7 @@ impl Default for SettingsCfg {
             mod_hold_ms: MOD_HOLD_MS,
             warmup_shift: DEFAULT_WARMUP_SHIFT,
             countdown_secs: COUNTDOWN_SECS,
+            appearance: AppearanceCfg::default(),
         }
     }
 }
@@ -75,11 +102,14 @@ pub fn get_settings(app: AppHandle) -> Result<SettingsCfg, String> {
     let path = settings_path(&app)?;
     let cfg = load_at(&path)?;
     log::info!(
-        "get_settings: event_pause_ms={} mod_hold_ms={} warmup_shift={} countdown_secs={}",
+        "get_settings: event_pause_ms={} mod_hold_ms={} warmup_shift={} countdown_secs={} appearance.profile={} appearance.mode={} appearance.font_size={}",
         cfg.event_pause_ms,
         cfg.mod_hold_ms,
         cfg.warmup_shift,
         cfg.countdown_secs,
+        cfg.appearance.profile,
+        cfg.appearance.mode,
+        cfg.appearance.font_size,
     );
     Ok(cfg)
 }
@@ -89,11 +119,14 @@ pub fn save_settings(app: AppHandle, cfg: SettingsCfg) -> Result<(), String> {
     let path = settings_path(&app)?;
     save_at(&path, &cfg)?;
     log::info!(
-        "save_settings: event_pause_ms={} mod_hold_ms={} warmup_shift={} countdown_secs={}",
+        "save_settings: event_pause_ms={} mod_hold_ms={} warmup_shift={} countdown_secs={} appearance.profile={} appearance.mode={} appearance.font_size={}",
         cfg.event_pause_ms,
         cfg.mod_hold_ms,
         cfg.warmup_shift,
         cfg.countdown_secs,
+        cfg.appearance.profile,
+        cfg.appearance.mode,
+        cfg.appearance.font_size,
     );
     Ok(())
 }
@@ -116,12 +149,25 @@ mod tests {
     }
 
     #[test]
+    fn default_includes_appearance_defaults() {
+        let cfg = SettingsCfg::default();
+        assert_eq!(cfg.appearance.profile, "atelier");
+        assert_eq!(cfg.appearance.mode, "system");
+        assert!((cfg.appearance.font_size - 1.0).abs() < f32::EPSILON);
+    }
+
+    #[test]
     fn serde_roundtrip_preserves_values() {
         let cfg = SettingsCfg {
             event_pause_ms: 8,
             mod_hold_ms: 12,
             warmup_shift: false,
             countdown_secs: 5,
+            appearance: AppearanceCfg {
+                profile: "solarized".into(),
+                mode: "light".into(),
+                font_size: 1.15,
+            },
         };
         let json = serde_json::to_string(&cfg).unwrap();
         let back: SettingsCfg = serde_json::from_str(&json).unwrap();
@@ -136,6 +182,17 @@ mod tests {
         assert!(json.get("modHoldMs").is_some());
         assert!(json.get("warmupShift").is_some());
         assert!(json.get("countdownSecs").is_some());
+        assert!(json.get("appearance").is_some());
+    }
+
+    #[test]
+    fn serde_emits_camel_case_appearance_keys() {
+        let cfg = SettingsCfg::default();
+        let json = serde_json::to_value(&cfg).unwrap();
+        let appearance = json.get("appearance").unwrap();
+        assert!(appearance.get("profile").is_some());
+        assert!(appearance.get("mode").is_some());
+        assert!(appearance.get("fontSize").is_some());
     }
 
     #[test]
@@ -154,10 +211,36 @@ mod tests {
             mod_hold_ms: 15,
             warmup_shift: true,
             countdown_secs: 4,
+            appearance: AppearanceCfg {
+                profile: "nord".into(),
+                mode: "dark".into(),
+                font_size: 1.3,
+            },
         };
         save_at(&path, &original).unwrap();
         let loaded = load_at(&path).unwrap();
         assert_eq!(loaded, original);
+        let _ = fs::remove_file(&path);
+    }
+
+    #[test]
+    fn load_at_back_compat_with_missing_appearance() {
+        // Files written by v2-5 (before the appearance field existed)
+        // should load cleanly with the default appearance applied.
+        let path = tmp("v2_5_format.json");
+        let v2_5_json = r#"{
+            "eventPauseMs": 8,
+            "modHoldMs": 12,
+            "warmupShift": false,
+            "countdownSecs": 5
+        }"#;
+        fs::write(&path, v2_5_json).unwrap();
+        let loaded = load_at(&path).unwrap();
+        assert_eq!(loaded.event_pause_ms, 8);
+        assert_eq!(loaded.mod_hold_ms, 12);
+        assert!(!loaded.warmup_shift);
+        assert_eq!(loaded.countdown_secs, 5);
+        assert_eq!(loaded.appearance, AppearanceCfg::default());
         let _ = fs::remove_file(&path);
     }
 

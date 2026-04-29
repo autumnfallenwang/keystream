@@ -1,7 +1,9 @@
 @import "tailwindcss";
 
 /* v2 palette — "Terminal Atelier" calibrated dark theme.
-   See docs/v2-frontend-design.md "Palette" section. */
+   See docs/v2-frontend-design.md "Palette" section. The bare `:root`
+   block is Atelier dark — applied when no `theme-*` class is set.
+   Other profiles + light variants live in their own blocks below. */
 :root {
   --bg-canvas: #0a0a0b;
   --bg-rail: #08080a;
@@ -29,6 +31,257 @@
 
   --foreground: var(--fg-primary);
   --background: var(--bg-canvas);
+}
+
+/* Q15 UI scale. Lives on html (not :root) so Tailwind 4's theme
+   token processing doesn't strip it. The ThemeProvider also calls
+   `style.setProperty("--font-scale", ...)` on documentElement. */
+html {
+  --font-scale: 1;
+}
+
+/* Theme overrides — applied to <html> by ThemeProvider via class.
+   Plain `.theme-X-Y` selectors (NOT `:root.theme-X-Y`) — Tailwind 4's
+   PostCSS plugin silently drops compound `:root.X` selectors. The class
+   sits on the html element which IS :root, so this is equivalent. */
+
+/* Atelier light — inverted from the dark base. */
+.theme-atelier-light {
+  --bg-canvas: #f5f5fa;
+  --bg-rail: #ececf2;
+  --bg-elevated: #ffffff;
+  --bg-hover: #e2e2ec;
+  --bg-active: #d8d8e3;
+
+  --hairline: #d8d8e3;
+  --hairline-soft: #e2e2ec;
+  --hairline-strong: #c4c4d2;
+
+  --fg-primary: #0a0a0b;
+  --fg-secondary: #44445c;
+  --fg-tertiary: #6a6a82;
+  --fg-quaternary: #a0a0b4;
+
+  --accent: #5570e8;
+  --accent-hover: #6a86ff;
+  --accent-press: #3d56cc;
+  --accent-glow: rgba(85, 112, 232, 0.125);
+
+  --ok: #2da57b;
+  --warn: #c97a00;
+  --alert: #d62b54;
+}
+
+/* Solarized — Ethan Schoonover's classic warm-ochre + cyan. */
+.theme-solarized-dark {
+  --bg-canvas: #002b36;
+  --bg-rail: #001f27;
+  --bg-elevated: #073642;
+  --bg-hover: #0d4351;
+  --bg-active: #114858;
+
+  --hairline: #0d4351;
+  --hairline-soft: #073642;
+  --hairline-strong: #114858;
+
+  --fg-primary: #fdf6e3;
+  --fg-secondary: #93a1a1;
+  --fg-tertiary: #657b83;
+  --fg-quaternary: #586e75;
+
+  --accent: #268bd2;
+  --accent-hover: #4fa3df;
+  --accent-press: #1e6fa6;
+  --accent-glow: rgba(38, 139, 210, 0.18);
+
+  --ok: #859900;
+  --warn: #b58900;
+  --alert: #dc322f;
+}
+
+.theme-solarized-light {
+  --bg-canvas: #fdf6e3;
+  --bg-rail: #f5eed8;
+  --bg-elevated: #eee8d5;
+  --bg-hover: #e6e0cb;
+  --bg-active: #d8d2bf;
+
+  --hairline: #d8d2bf;
+  --hairline-soft: #eee8d5;
+  --hairline-strong: #c4bf9f;
+
+  --fg-primary: #073642;
+  --fg-secondary: #586e75;
+  --fg-tertiary: #657b83;
+  --fg-quaternary: #93a1a1;
+
+  --accent: #268bd2;
+  --accent-hover: #4fa3df;
+  --accent-press: #1e6fa6;
+  --accent-glow: rgba(38, 139, 210, 0.15);
+
+  --ok: #859900;
+  --warn: #b58900;
+  --alert: #dc322f;
+}
+
+/* Nord — cool Arctic blue-gray. */
+.theme-nord-dark {
+  --bg-canvas: #2e3440;
+  --bg-rail: #272b36;
+  --bg-elevated: #3b4252;
+  --bg-hover: #434c5e;
+  --bg-active: #4c566a;
+
+  --hairline: #3b4252;
+  --hairline-soft: #353b48;
+  --hairline-strong: #4c566a;
+
+  --fg-primary: #eceff4;
+  --fg-secondary: #d8dee9;
+  --fg-tertiary: #8b95a7;
+  --fg-quaternary: #6c7387;
+
+  --accent: #88c0d0;
+  --accent-hover: #a0cdd9;
+  --accent-press: #6da9bc;
+  --accent-glow: rgba(136, 192, 208, 0.18);
+
+  --ok: #a3be8c;
+  --warn: #ebcb8b;
+  --alert: #bf616a;
+}
+
+.theme-nord-light {
+  --bg-canvas: #eceff4;
+  --bg-rail: #e5e9f0;
+  --bg-elevated: #f5f7fa;
+  --bg-hover: #d8dee9;
+  --bg-active: #c4cdd9;
+
+  --hairline: #c4cdd9;
+  --hairline-soft: #d8dee9;
+  --hairline-strong: #aab4c2;
+
+  --fg-primary: #2e3440;
+  --fg-secondary: #434c5e;
+  --fg-tertiary: #6c7387;
+  --fg-quaternary: #8b95a7;
+
+  --accent: #5e81ac;
+  --accent-hover: #6f93bd;
+  --accent-press: #486f9c;
+  --accent-glow: rgba(94, 129, 172, 0.15);
+
+  --ok: #8aa775;
+  --warn: #b08a37;
+  --alert: #a04852;
+}
+
+/* Dracula — purple / pink / cyan on dark, the canonical Dracula palette. */
+.theme-dracula-dark {
+  --bg-canvas: #282a36;
+  --bg-rail: #21222c;
+  --bg-elevated: #343746;
+  --bg-hover: #3d4055;
+  --bg-active: #44475a;
+
+  --hairline: #44475a;
+  --hairline-soft: #343746;
+  --hairline-strong: #6272a4;
+
+  --fg-primary: #f8f8f2;
+  --fg-secondary: #c9c9d1;
+  --fg-tertiary: #8a8ca0;
+  --fg-quaternary: #6272a4;
+
+  --accent: #bd93f9;
+  --accent-hover: #cba6fa;
+  --accent-press: #a373e8;
+  --accent-glow: rgba(189, 147, 249, 0.18);
+
+  --ok: #50fa7b;
+  --warn: #f1fa8c;
+  --alert: #ff79c6;
+}
+
+.theme-dracula-light {
+  --bg-canvas: #f8f8f2;
+  --bg-rail: #f0eef0;
+  --bg-elevated: #ffffff;
+  --bg-hover: #ebe8ee;
+  --bg-active: #ddd6e3;
+
+  --hairline: #ddd6e3;
+  --hairline-soft: #ebe8ee;
+  --hairline-strong: #6272a4;
+
+  --fg-primary: #282a36;
+  --fg-secondary: #44475a;
+  --fg-tertiary: #6272a4;
+  --fg-quaternary: #8a8ca0;
+
+  --accent: #6c4ed1;
+  --accent-hover: #815ee0;
+  --accent-press: #5638b8;
+  --accent-glow: rgba(108, 78, 209, 0.15);
+
+  --ok: #2da55a;
+  --warn: #b58a00;
+  --alert: #c2389a;
+}
+
+/* High contrast — WCAG AAA pairings. */
+.theme-contrast-dark {
+  --bg-canvas: #000000;
+  --bg-rail: #000000;
+  --bg-elevated: #0a0a0a;
+  --bg-hover: #1a1a1a;
+  --bg-active: #2a2a2a;
+
+  --hairline: #4a4a4a;
+  --hairline-soft: #2a2a2a;
+  --hairline-strong: #ffffff;
+
+  --fg-primary: #ffffff;
+  --fg-secondary: #f0f0f0;
+  --fg-tertiary: #c8c8c8;
+  --fg-quaternary: #888888;
+
+  --accent: #ffff00;
+  --accent-hover: #ffff66;
+  --accent-press: #cccc00;
+  --accent-glow: rgba(255, 255, 0, 0.25);
+
+  --ok: #00ff66;
+  --warn: #ff8800;
+  --alert: #ff4466;
+}
+
+.theme-contrast-light {
+  --bg-canvas: #ffffff;
+  --bg-rail: #ffffff;
+  --bg-elevated: #fafafa;
+  --bg-hover: #ececec;
+  --bg-active: #d8d8d8;
+
+  --hairline: #4a4a4a;
+  --hairline-soft: #c8c8c8;
+  --hairline-strong: #000000;
+
+  --fg-primary: #000000;
+  --fg-secondary: #1a1a1a;
+  --fg-tertiary: #4a4a4a;
+  --fg-quaternary: #888888;
+
+  --accent: #0000ee;
+  --accent-hover: #3333ff;
+  --accent-press: #0000aa;
+  --accent-glow: rgba(0, 0, 238, 0.18);
+
+  --ok: #006622;
+  --warn: #884400;
+  --alert: #aa0022;
 }
 
 @theme inline {
@@ -83,6 +336,14 @@ body {
   color: var(--fg-primary);
   font-family: var(--font-geist-sans), system-ui, sans-serif;
   letter-spacing: -0.005em;
+}
+
+/* Q15 UI scale — apply via `zoom` on the html element (separate rule
+   so Tailwind 4's body-token processing doesn't strip it). zoom is
+   non-standard but well-supported in Tauri's WKWebView and scales
+   everything proportionally without requiring a px→rem migration. */
+html {
+  zoom: var(--font-scale);
 }
 
 button {

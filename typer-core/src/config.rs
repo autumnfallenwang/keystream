@@ -16,8 +16,8 @@ pub const COUNTDOWN_SECS: u64 = 3;
 // --- Keystroke timing (Q2 cliclick recipe) ---
 
 /// Sleep after each key down/up event. Matches cliclick's 10ms.
-/// poc2 confirmed: AVD floor is 7ms, local Mac floor is 5ms — 10ms
-/// keeps a 30% margin over the AVD floor. See `docs/poc2-results.md`.
+/// poc2 confirmed: RDP floor is 7ms, local Mac floor is 5ms — 10ms
+/// keeps a 30% margin over the RDP floor. See `docs/lessons.md` (poc2 entries).
 pub const EVENT_PAUSE_MS: u64 = 10;
 
 /// Hold time between shift down/up and the char event (Q2 recipe).

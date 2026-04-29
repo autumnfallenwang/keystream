@@ -12,8 +12,8 @@ History: v1 bundled two Swift sidecars into the Keystream `.app`:
 
 Both became unnecessary when poc2 validated that
 `CGEventSourceStateID::Private` makes the keystroke sender byte-perfect
-on AVD (see `docs/poc2-results.md`). With reliable input, OCR-verify is
-solving a problem that no longer exists.
+on AVD (see `docs/lessons.md` poc2 entries). With reliable input,
+OCR-verify is solving a problem that no longer exists.
 
 ## If a future feature needs OCR or region selection
 

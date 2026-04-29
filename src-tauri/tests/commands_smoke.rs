@@ -14,7 +14,7 @@
 //! NOT covered here (intentional):
 //! - `send::run_send` orchestration loop. Needs a Tauri runtime and a
 //!   real `RealEventSource`; end-to-end coverage lives in the manual
-//!   AVD smoke per `progress.md`.
+//!   RDP smoke per `progress.md`.
 //! - `send::pause_send` / `send::stop_send` runtime behavior. Take
 //!   `State<'_, SendState>` which isn't constructible without a Tauri
 //!   runtime. Signature checks below confirm they exist.

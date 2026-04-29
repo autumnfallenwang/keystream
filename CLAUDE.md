@@ -12,11 +12,10 @@ Tauri 2 (Rust shell, native OS webview) | Next.js (App Router, static export) + 
 - `src/lib/ipc.ts` — Tauri bridge: ONLY file with `@tauri-apps/*` imports
 - `src/lib/core/` — pure TS business logic (config serialization, diff rendering, keymap helpers). No Tauri imports, no platform code.
 - `src-tauri/` — Rust shell + Tauri commands (thin wrapper over `typer-core`)
-- `src-tauri/binaries/` — Swift sidecar binaries (`ocr_helper`, `region_picker`) bundled into the `.app`
-- `typer-core/` — platform-specific Rust library implementing the sender and OCR verify loop. Consumed by both `src-tauri/` and any CLI/test harness.
-- `tests/` — non-shipped test infrastructure (fixtures, integration tests)
-- `docs/` — design docs, decision log, PoC artifacts
-- `docs/poc/` — Proof-of-concept artifacts that preceded this app: the Rust CLI that proved the typing-and-verify pipeline (`typer/`), Swift OCR sidecar sources (`ocr_helper/`), the authored sample corpus (`samples/code_corpus.txt`), the one stress-run capture that hit 0 typing errors (`results/stress1_*`), and the original Python predecessor (`python-predecessor/`). See [`docs/poc/README.md`](docs/poc/README.md).
+- `src-tauri/binaries/` — empty in v2 (Swift sidecars `ocr_helper`/`region_picker` retired in v2-2; see `src-tauri/binaries/README.md` for restoration if a future feature ever needs OCR)
+- `typer-core/` — platform-specific Rust library implementing the keystroke sender. Consumed by `src-tauri/`. (v1's OCR verify loop was retired in v2-2.)
+- `tests/` — non-shipped test infrastructure (fixtures in `tests/fixtures/`, integration tests in `tests/integration/`)
+- `docs/` — design docs, decision log, walkthrough findings (4 docs total: `design-plan.md`, `progress.md`, `lessons.md`, `backlog.md`)
 - `.claude/` — agents, hooks, skills for this project
 - `sandbox/` — gitignored scratch space for live-session smoke tests (screenshots, recorded runs against a real remote VM). See "Security constraints" below.
 
@@ -50,12 +49,8 @@ All detailed rules live in `.claude/rules/` (auto-loaded each session):
 
 ## Docs
 
-- [docs/design-plan.md](docs/design-plan.md) — design plan, locked decisions, data model, build phases
-- [docs/progress.md](docs/progress.md) — current task tracker
-- [docs/lessons.md](docs/lessons.md) — corrections and patterns to avoid repeating
-- [docs/poc/](docs/poc/) — PoC sources, the CLI that proved the approach (0 typing errors / 9,160 chars against a real remote VM), corpus samples, screenshots
+- [docs/design-plan.md](docs/design-plan.md) — architecture, visual contract, locked decisions (Q1–Q19), build phase index
+- [docs/progress.md](docs/progress.md) — current phase status + operator handoff queue
+- [docs/lessons.md](docs/lessons.md) — corrections and patterns to avoid repeating; includes the poc2 study findings
+- [docs/backlog.md](docs/backlog.md) — walkthrough-discovered findings (bugs / design changes), with status tracking
 - [.claude/rules/conventions.md](.claude/rules/conventions.md) — coding conventions. Auto-loaded by Claude Code.
-
-## Predecessor
-
-PoC CLI at `docs/poc/typer/` (Rust, macOS CGEvent + Apple Vision) — proved the typing-and-verify pipeline end-to-end before the UI work started. The `typer-core` library is a direct descendant; the CLI itself is retained as a reference binary and lightweight test harness.

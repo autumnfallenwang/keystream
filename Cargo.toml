@@ -1,11 +1,6 @@
 [workspace]
 resolver = "2"
 members = ["src-tauri", "typer-core"]
-# The PoC Rust CLI is reference material, not a workspace member. Keep it
-# compilable as a standalone crate so `cd docs/poc/typer && cargo build`
-# still works for anyone verifying PoC claims independently.
-# poc2/typer2 is the round-2 experiment harness — same arrangement.
-exclude = ["docs/poc/typer", "poc2/typer2"]
 
 [workspace.package]
 version = "0.1.0"

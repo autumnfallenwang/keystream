@@ -67,7 +67,7 @@ export function CountdownOverlay({ remaining, totalSecs, onCancel }: CountdownOv
           {display}
         </div>
       </div>
-      <p className="mt-8 text-[14px] text-fg-secondary">Click into the AVD window now</p>
+      <p className="mt-8 text-[14px] text-fg-secondary">Click into the RDP window now</p>
       <button
         ref={cancelRef}
         type="button"

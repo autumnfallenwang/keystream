@@ -46,16 +46,42 @@ describe("Sidebar", () => {
     expect(onLoadFile).toHaveBeenCalledOnce();
   });
 
-  it("Clear button invokes onClear when enabled", async () => {
+  it("Clear button shows inline confirm on first click (D-06)", async () => {
     const onClear = vi.fn();
     render(<Sidebar {...defaults({ onClear, clearDisabled: false })} />);
-    await userEvent.click(screen.getByRole("button", { name: /clear/i }));
+    await userEvent.click(screen.getByRole("button", { name: /^clear$/i }));
+    // First click does NOT invoke onClear — it surfaces the confirm.
+    expect(onClear).not.toHaveBeenCalled();
+    expect(screen.getByTestId("clear-confirm")).toBeInTheDocument();
+    expect(screen.getByText(/Clear loaded text\?/)).toBeInTheDocument();
+  });
+
+  it("Confirming Clear inline invokes onClear", async () => {
+    const onClear = vi.fn();
+    render(<Sidebar {...defaults({ onClear, clearDisabled: false })} />);
+    await userEvent.click(screen.getByRole("button", { name: /^clear$/i }));
+    // After surfacing the confirm panel, click the destructive Clear button
+    // INSIDE the panel.
+    const panel = screen.getByTestId("clear-confirm");
+    await userEvent.click(within(panel).getByRole("button", { name: /^clear$/i }));
     expect(onClear).toHaveBeenCalledOnce();
+  });
+
+  it("Cancelling the Clear confirm reverts to the rail row without firing onClear", async () => {
+    const onClear = vi.fn();
+    render(<Sidebar {...defaults({ onClear, clearDisabled: false })} />);
+    await userEvent.click(screen.getByRole("button", { name: /^clear$/i }));
+    const panel = screen.getByTestId("clear-confirm");
+    await userEvent.click(within(panel).getByRole("button", { name: /cancel/i }));
+    expect(onClear).not.toHaveBeenCalled();
+    expect(screen.queryByTestId("clear-confirm")).toBeNull();
+    // Original Clear rail row is back.
+    expect(screen.getByRole("button", { name: /^clear$/i })).toBeInTheDocument();
   });
 
   it("Clear button is disabled when clearDisabled=true", () => {
     render(<Sidebar {...defaults({ clearDisabled: true })} />);
-    expect(screen.getByRole("button", { name: /clear/i })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /^clear$/i })).toBeDisabled();
   });
 
   it("Settings rail item invokes onOpenSettings", async () => {

@@ -2,13 +2,46 @@ import { describe, expect, it } from "vitest";
 import { type AppState, COUNTDOWN_SECS, reduce } from "./app-state";
 
 describe("reduce", () => {
-  it("idle → countdown(send) on sendClicked", () => {
-    const next = reduce({ mode: "idle" }, { kind: "sendClicked", totalChars: 100 });
+  it("idle → countdown(send) on sendClicked uses payload countdownSecs", () => {
+    const next = reduce(
+      { mode: "idle" },
+      { kind: "sendClicked", totalChars: 100, countdownSecs: 5 },
+    );
     expect(next.mode).toBe("countdown");
     if (next.mode === "countdown") {
-      expect(next.remaining).toBe(COUNTDOWN_SECS);
+      expect(next.remaining).toBe(5);
       expect(next.intent).toBe("send");
       expect(next.resumeOffset).toBe(0);
+    }
+  });
+
+  it("sendClicked respects the user's configured countdownSecs (e.g. 10)", () => {
+    // Regression: the reducer used to hardcode COUNTDOWN_SECS=3 instead
+    // of reading the per-event payload, so user settings were ignored.
+    const next = reduce(
+      { mode: "idle" },
+      { kind: "sendClicked", totalChars: 100, countdownSecs: 10 },
+    );
+    expect(next.mode).toBe("countdown");
+    if (next.mode === "countdown") {
+      expect(next.remaining).toBe(10);
+    }
+  });
+
+  it("resumeClicked respects the user's configured countdownSecs", () => {
+    const start: AppState = {
+      mode: "paused",
+      position: 50,
+      charsTyped: 50,
+      totalChars: 200,
+      durationMs: 1_000,
+    };
+    const next = reduce(start, { kind: "resumeClicked", countdownSecs: 7 });
+    expect(next.mode).toBe("countdown");
+    if (next.mode === "countdown") {
+      expect(next.remaining).toBe(7);
+      expect(next.intent).toBe("resume");
+      expect(next.resumeOffset).toBe(50);
     }
   });
 
@@ -113,7 +146,7 @@ describe("reduce", () => {
       totalChars: 100,
       durationMs: 1_000,
     };
-    const next = reduce(start, { kind: "resumeClicked" });
+    const next = reduce(start, { kind: "resumeClicked", countdownSecs: COUNTDOWN_SECS });
     expect(next.mode).toBe("countdown");
     if (next.mode === "countdown") {
       expect(next.intent).toBe("resume");
@@ -168,5 +201,37 @@ describe("reduce", () => {
     };
     const next = reduce(start, { kind: "stopClicked" });
     expect(next.mode).toBe("idle");
+  });
+
+  // B-02: live progress tick from typer-core's progress callback.
+  it("ipcSendProgress updates charsTyped while in sending mode", () => {
+    const start: AppState = {
+      mode: "sending",
+      charsTyped: 0,
+      totalChars: 500,
+      startedAtMs: 0,
+    };
+    const next = reduce(start, { kind: "ipcSendProgress", charsTyped: 150 });
+    expect(next.mode).toBe("sending");
+    if (next.mode === "sending") {
+      expect(next.charsTyped).toBe(150);
+      expect(next.totalChars).toBe(500); // preserved
+      expect(next.startedAtMs).toBe(0); // preserved
+    }
+  });
+
+  it("ipcSendProgress is a no-op outside sending mode", () => {
+    const idle: AppState = { mode: "idle" };
+    expect(reduce(idle, { kind: "ipcSendProgress", charsTyped: 50 })).toBe(idle);
+
+    const paused: AppState = {
+      mode: "paused",
+      position: 100,
+      charsTyped: 100,
+      totalChars: 500,
+      durationMs: 2_000,
+    };
+    const next = reduce(paused, { kind: "ipcSendProgress", charsTyped: 200 });
+    expect(next).toBe(paused);
   });
 });

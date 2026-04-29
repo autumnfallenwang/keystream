@@ -24,13 +24,19 @@ use crate::keymap::{
 use std::thread;
 use std::time::{Duration, Instant};
 
+/// How often to invoke the optional progress callback (in chars typed).
+/// At RDP's 10ms/char floor this is ~500ms — fast enough for the eye to
+/// track the active-line indicator advancing, slow enough to avoid
+/// flooding the IPC channel.
+pub const PROGRESS_INTERVAL: usize = 50;
+
 /// Timing configuration for the sender. Defaults read from
 /// `crate::config` (see `SendCfg::default()`). The Tauri v2-3 handler
 /// reads user-tunable values from `<app_data_dir>/settings.json` and
 /// passes them in via this struct (Phase v2-5).
 #[derive(Debug, Clone)]
 pub struct SendCfg {
-    /// Sleep after each key down/up event. poc2 floor: 7ms (AVD), 5ms (local).
+    /// Sleep after each key down/up event. poc2 floor: 7ms (RDP), 5ms (local).
     pub event_pause_ms: u64,
     /// Hold time between shift down/up and the char event (Q2).
     pub mod_hold_ms: u64,
@@ -91,12 +97,17 @@ pub struct SendOutcome {
 /// Per Q14, checks `control.read()` at every char boundary and returns
 /// cleanly on pause/stop. The flag is left in `Running` state on exit so
 /// a subsequent call starts clean.
+///
+/// The optional `progress` callback is invoked every `PROGRESS_INTERVAL`
+/// successfully-typed chars with the running `chars_typed` count. Used
+/// by the Tauri shell to drive the live active-line indicator.
 pub fn run_send(
     src: &dyn EventSource,
     text: &str,
     cfg: &SendCfg,
     control: &SendControlFlag,
     start_offset: usize,
+    mut progress: Option<&mut dyn FnMut(usize)>,
 ) -> Result<SendOutcome> {
     let total_chars = text.chars().count();
     log::info!(
@@ -153,6 +164,7 @@ pub fn run_send(
             }
         }
 
+        let prev_chars_typed = chars_typed;
         if ch == '\n' {
             tap_key(src, KEYCODE_RETURN, cfg)?;
             chars_typed += 1;
@@ -168,6 +180,11 @@ pub fn run_send(
                     log::warn!("send: skip unmapped_codepoint={:#x}", ch as u32);
                     skipped += 1;
                 }
+            }
+        }
+        if chars_typed > prev_chars_typed && chars_typed % PROGRESS_INTERVAL == 0 {
+            if let Some(cb) = progress.as_mut() {
+                cb(chars_typed);
             }
         }
     }
@@ -213,7 +230,7 @@ pub fn tap_key(src: &dyn EventSource, keycode: u16, cfg: &SendCfg) -> Result<()>
 }
 
 /// Ctrl-combo using the cliclick recipe (raw keycodes, no flags). Works
-/// for Ctrl+A etc. against AVD.
+/// for Ctrl+A etc. against RDP.
 pub fn send_ctrl_combo(src: &dyn EventSource, keycode: u16, cfg: &SendCfg) -> Result<()> {
     src.post_key(KEYCODE_CONTROL, true)?;
     thread::sleep(Duration::from_millis(cfg.mod_hold_ms));
@@ -303,7 +320,7 @@ mod tests {
             warmup_shift: true,
             ..fast_cfg()
         };
-        let outcome = run_send(&src, "a", &cfg, &flag(), 0).unwrap();
+        let outcome = run_send(&src, "a", &cfg, &flag(), 0, None).unwrap();
         assert_eq!(outcome.reason, ExitReason::Completed);
         assert_eq!(outcome.chars_typed, 1);
         let events = src.events.borrow();
@@ -318,7 +335,7 @@ mod tests {
     #[test]
     fn run_send_without_warmup_uses_recipe_directly() {
         let src = RecordingEventSource::new();
-        let outcome = run_send(&src, "A", &fast_cfg(), &flag(), 0).unwrap();
+        let outcome = run_send(&src, "A", &fast_cfg(), &flag(), 0, None).unwrap();
         assert_eq!(outcome.reason, ExitReason::Completed);
         let events = src.events.borrow();
         assert_eq!(
@@ -335,7 +352,7 @@ mod tests {
     #[test]
     fn run_send_newline_posts_return_key() {
         let src = RecordingEventSource::new();
-        let outcome = run_send(&src, "\n", &fast_cfg(), &flag(), 0).unwrap();
+        let outcome = run_send(&src, "\n", &fast_cfg(), &flag(), 0, None).unwrap();
         assert_eq!(outcome.reason, ExitReason::Completed);
         assert_eq!(outcome.chars_typed, 1);
         let events = src.events.borrow();
@@ -349,7 +366,7 @@ mod tests {
     fn run_send_skips_unmapped_without_error() {
         let src = RecordingEventSource::new();
         // 'é' is not in the US-ANSI keymap — must skip, not fail.
-        let outcome = run_send(&src, "é", &fast_cfg(), &flag(), 0).unwrap();
+        let outcome = run_send(&src, "é", &fast_cfg(), &flag(), 0, None).unwrap();
         assert_eq!(outcome.reason, ExitReason::Completed);
         assert_eq!(outcome.chars_typed, 0);
         assert_eq!(outcome.skipped, 1);
@@ -366,7 +383,7 @@ mod tests {
         let src = RecordingEventSource::new();
         let f = flag();
         f.request_pause();
-        let outcome = run_send(&src, "abcdef", &fast_cfg(), &f, 0).unwrap();
+        let outcome = run_send(&src, "abcdef", &fast_cfg(), &f, 0, None).unwrap();
         assert_eq!(outcome.reason, ExitReason::Paused { position: 0 });
         assert_eq!(outcome.chars_typed, 0);
         // No keystrokes posted.
@@ -380,7 +397,7 @@ mod tests {
         let src = RecordingEventSource::new();
         let f = flag();
         f.request_stop();
-        let outcome = run_send(&src, "abcdef", &fast_cfg(), &f, 0).unwrap();
+        let outcome = run_send(&src, "abcdef", &fast_cfg(), &f, 0, None).unwrap();
         assert_eq!(outcome.reason, ExitReason::Stopped { position: 0 });
         assert_eq!(outcome.chars_typed, 0);
         assert_eq!(f.read(), SendControl::Running);
@@ -390,7 +407,7 @@ mod tests {
     fn run_send_start_offset_skips_prefix() {
         // start_offset=3 → skip "abc", type "def".
         let src = RecordingEventSource::new();
-        let outcome = run_send(&src, "abcdef", &fast_cfg(), &flag(), 3).unwrap();
+        let outcome = run_send(&src, "abcdef", &fast_cfg(), &flag(), 3, None).unwrap();
         assert_eq!(outcome.reason, ExitReason::Completed);
         assert_eq!(outcome.chars_typed, 3);
         // 'd'=2 'e'=14 'f'=3 keycodes (US-ANSI). Each posts down+up.
@@ -404,7 +421,7 @@ mod tests {
     #[test]
     fn run_send_completes_full_text() {
         let src = RecordingEventSource::new();
-        let outcome = run_send(&src, "abc", &fast_cfg(), &flag(), 0).unwrap();
+        let outcome = run_send(&src, "abc", &fast_cfg(), &flag(), 0, None).unwrap();
         assert_eq!(outcome.reason, ExitReason::Completed);
         assert_eq!(outcome.chars_typed, 3);
         assert_eq!(outcome.skipped, 0);
@@ -418,11 +435,49 @@ mod tests {
             warmup_shift: true,
             ..fast_cfg()
         };
-        let outcome = run_send(&src, "abc", &cfg, &flag(), 1).unwrap();
+        let outcome = run_send(&src, "abc", &cfg, &flag(), 1, None).unwrap();
         assert_eq!(outcome.reason, ExitReason::Completed);
         let events = src.events.borrow();
         // No leading warmup shift pair; just 'b' and 'c' (4 events).
         assert_eq!(events.len(), 4);
         assert_eq!(events[0].0, 11); // 'b'
+    }
+
+    // ---- Progress callback (B-02) ----
+
+    #[test]
+    fn run_send_invokes_progress_callback_at_interval_boundaries() {
+        // 200 'a' chars → callback should fire at 50, 100, 150, 200.
+        let src = RecordingEventSource::new();
+        let text = "a".repeat(200);
+        let mut ticks: Vec<usize> = Vec::new();
+        let mut progress = |n: usize| ticks.push(n);
+        let outcome = run_send(&src, &text, &fast_cfg(), &flag(), 0, Some(&mut progress)).unwrap();
+        assert_eq!(outcome.reason, ExitReason::Completed);
+        assert_eq!(outcome.chars_typed, 200);
+        assert_eq!(ticks, vec![50, 100, 150, 200]);
+    }
+
+    #[test]
+    fn run_send_omits_callback_when_text_shorter_than_interval() {
+        // 30 chars never reaches the 50-char threshold — no progress emit.
+        let src = RecordingEventSource::new();
+        let text = "a".repeat(30);
+        let mut ticks: Vec<usize> = Vec::new();
+        let mut progress = |n: usize| ticks.push(n);
+        let outcome = run_send(&src, &text, &fast_cfg(), &flag(), 0, Some(&mut progress)).unwrap();
+        assert_eq!(outcome.reason, ExitReason::Completed);
+        assert_eq!(outcome.chars_typed, 30);
+        assert!(ticks.is_empty());
+    }
+
+    #[test]
+    fn run_send_progress_callback_optional_none_is_no_op() {
+        // Sanity: passing None doesn't panic and still completes correctly.
+        let src = RecordingEventSource::new();
+        let text = "a".repeat(100);
+        let outcome = run_send(&src, &text, &fast_cfg(), &flag(), 0, None).unwrap();
+        assert_eq!(outcome.reason, ExitReason::Completed);
+        assert_eq!(outcome.chars_typed, 100);
     }
 }

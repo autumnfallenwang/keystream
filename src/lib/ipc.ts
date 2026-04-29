@@ -130,14 +130,17 @@ export async function openSettingsPane(pane: SettingsPane): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
-// User settings (Q13 four-dial config)
+// User settings (Q13 four-dial config + Q15 appearance shell)
 // ---------------------------------------------------------------------------
+
+import type { AppearanceCfg } from "@/lib/core/appearance";
 
 export type Settings = {
   eventPauseMs: number;
   modHoldMs: number;
   warmupShift: boolean;
   countdownSecs: number;
+  appearance: AppearanceCfg;
 };
 
 /** Read settings from disk. Returns defaults on first launch (file missing). */
@@ -155,6 +158,10 @@ export async function saveSettings(cfg: Settings): Promise<void> {
 // ---------------------------------------------------------------------------
 
 export type SendEvent =
+  | {
+      event: "sendProgress";
+      data: { charsTyped: number };
+    }
   | {
       event: "sendComplete";
       data: { charsTyped: number; skipped: number; durationMs: number };
