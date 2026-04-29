@@ -6,6 +6,10 @@ Format: Keep a [Changelog](https://keepachangelog.com/en/1.1.0/). Version tags f
 
 ## [Unreleased]
 
+## [0.1.2] — 2026-04-29
+
+First public release. macOS arm64 only.
+
 - Main header redesign: filename slot replaces the gate chips; Edit/Lock, a new Wrap toggle, and Send/Pause/Resume/Stop now all live in the header. The footer action bar is gone — the text panel uses the freed pixels. Status during a send appears as a thin sub-row under the header.
 - Soft-wrap: new toggle in the header wraps long lines in both edit and lock modes (per session, defaults off).
 - Accessibility prompt: when the grant is missing, a thin amber row appears above the text panel and links to System Settings.
