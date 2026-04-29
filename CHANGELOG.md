@@ -6,6 +6,12 @@ Format: Keep a [Changelog](https://keepachangelog.com/en/1.1.0/). Version tags f
 
 ## [Unreleased]
 
+## [0.1.3] — 2026-04-29
+
+- New app icon: periwinkle pencil on an off-white rounded square (replaces the default Tauri icon).
+- New Settings → About tab. Shows the installed version, a "Check now" button, and an Install flow when an update is available. The `v0.1.x` footer at the bottom of the sidebars is gone — version info lives in About now.
+- Auto-updater wired end-to-end. Future versions can be installed in-place from Settings → About after this release.
+
 ## [0.1.2] — 2026-04-29
 
 First public release. macOS arm64 only.
