@@ -24,14 +24,28 @@ const pausedAt = (charsTyped: number): AppState => ({
 describe("TextPanel — edit mode", () => {
   it("shows the empty-state hint when text is empty", () => {
     render(
-      <TextPanel text="" locked={false} state={idle} onTextChange={vi.fn()} wrap={false} onLoadFile={vi.fn()} />,
+      <TextPanel
+        text=""
+        locked={false}
+        state={idle}
+        onTextChange={vi.fn()}
+        wrap={false}
+        onLoadFile={vi.fn()}
+      />,
     );
     expect(screen.getByText(/drop a file here/i)).toBeInTheDocument();
   });
 
   it("does not render a gutter in the empty state", () => {
     render(
-      <TextPanel text="" locked={false} state={idle} onTextChange={vi.fn()} wrap={false} onLoadFile={vi.fn()} />,
+      <TextPanel
+        text=""
+        locked={false}
+        state={idle}
+        onTextChange={vi.fn()}
+        wrap={false}
+        onLoadFile={vi.fn()}
+      />,
     );
     // No line numbers when there's no text.
     expect(screen.queryByText("1")).toBeNull();
