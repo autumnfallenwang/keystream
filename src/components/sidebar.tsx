@@ -1,14 +1,23 @@
 "use client";
 
-import { FileText, Settings, Trash2, Upload } from "lucide-react";
+import { ChevronDown, ChevronRight, FolderOpen, Settings, Upload } from "lucide-react";
 import { useState } from "react";
+import type { FolderTree } from "@/lib/core/file-tree";
+import { FileExplorer } from "./file-explorer";
 import { ResizeHandle } from "./resize-handle";
-import { SidebarEyebrow, SidebarRow } from "./sidebar-row";
+import { SidebarRow } from "./sidebar-row";
 
 export type SidebarProps = {
-  onLoadFile: () => void;
-  onClear: () => void;
-  clearDisabled: boolean;
+  /** Q18 — currently-loaded folder tree (null = no folder open). */
+  tree: FolderTree | null;
+  /** Q18 — absolute path of the currently-loaded file, or null. */
+  selectedPath: string | null;
+  /** Q18 — set of expanded folder paths. */
+  expandedPaths: ReadonlySet<string>;
+  onOpenFile: () => void;
+  onOpenFolder: () => void;
+  onSelectFile: (path: string) => void;
+  onToggleFolder: (path: string) => void;
   onOpenSettings: () => void;
   inSettings: boolean;
   appVersion: string;
@@ -21,9 +30,13 @@ export type SidebarProps = {
 };
 
 export function Sidebar({
-  onLoadFile,
-  onClear,
-  clearDisabled,
+  tree,
+  selectedPath,
+  expandedPaths,
+  onOpenFile,
+  onOpenFolder,
+  onSelectFile,
+  onToggleFolder,
   onOpenSettings,
   inSettings,
   appVersion,
@@ -31,15 +44,10 @@ export function Sidebar({
   onResizeCommit,
   currentWidthPx,
 }: SidebarProps) {
-  const [confirmingClear, setConfirmingClear] = useState(false);
-
-  // Clearing must reset the local confirm state too — otherwise after
-  // a clear the row would still be in confirm mode (clearDisabled goes
-  // true so the row is disabled, but state is dirty for next time).
-  const doClear = () => {
-    onClear();
-    setConfirmingClear(false);
-  };
+  // D-10 — collapse the entire Explorer section. Distinct from the
+  // per-folder collapse inside the tree itself.
+  const [explorerCollapsed, setExplorerCollapsed] = useState(false);
+  const ExplorerChevron = explorerCollapsed ? ChevronRight : ChevronDown;
 
   return (
     <aside
@@ -50,35 +58,43 @@ export function Sidebar({
         <h1 className="font-display text-[18px] font-medium tracking-tight text-fg">Keystream</h1>
       </div>
 
-      <SidebarEyebrow>Document</SidebarEyebrow>
-      <SidebarRow icon={<FileText size={16} />} active={!inSettings} onClick={selectCurrent}>
-        Current text
-      </SidebarRow>
-      <SidebarRow icon={<Upload size={16} />} onClick={onLoadFile}>
-        Load file…
-      </SidebarRow>
-      {confirmingClear ? (
-        <ClearConfirm onConfirm={doClear} onCancel={() => setConfirmingClear(false)} />
-      ) : (
-        <SidebarRow
-          icon={<Trash2 size={16} />}
-          disabled={clearDisabled}
-          onClick={() => setConfirmingClear(true)}
-        >
-          Clear
+      {/* D-11 — separator above the action rows. */}
+      <div className="border-t border-hairline">
+        <SidebarRow icon={<Upload size={16} />} onClick={onOpenFile}>
+          Open file…
         </SidebarRow>
-      )}
-
-      <div className="mt-5">
-        <SidebarEyebrow>History</SidebarEyebrow>
-        <p className="px-5 py-1 text-[12px] italic text-fg-tertiary">
-          Sent texts will appear here.
-        </p>
+        <SidebarRow icon={<FolderOpen size={16} />} onClick={onOpenFolder}>
+          Open folder…
+        </SidebarRow>
       </div>
 
-      <div className="flex-1" />
+      {/* D-10/D-11 — Explorer section header (collapsible) + body. */}
+      <div className="flex flex-1 flex-col overflow-hidden border-t border-hairline">
+        <button
+          type="button"
+          className="flex h-9 w-full items-center gap-[6px] px-[14px] text-fg-secondary transition-colors hover:bg-bg-hover"
+          onClick={() => setExplorerCollapsed((v) => !v)}
+          data-testid="explorer-section-toggle"
+          aria-expanded={!explorerCollapsed}
+        >
+          <ExplorerChevron size={12} className="text-fg-tertiary" />
+          <span className="font-mono text-[10px] font-medium uppercase tracking-[0.1em] text-fg-tertiary">
+            Explorer
+          </span>
+        </button>
+        {!explorerCollapsed && (
+          <FileExplorer
+            tree={tree}
+            selectedPath={selectedPath}
+            expandedPaths={expandedPaths}
+            onSelectFile={onSelectFile}
+            onToggleFolder={onToggleFolder}
+          />
+        )}
+      </div>
 
-      <div className="border-t border-hairline-soft py-1">
+      {/* D-11 — separator above Settings. */}
+      <div className="border-t border-hairline py-1">
         <SidebarRow icon={<Settings size={16} />} active={inSettings} onClick={onOpenSettings}>
           Settings
         </SidebarRow>
@@ -90,40 +106,4 @@ export function Sidebar({
       <ResizeHandle onResize={onResize} onCommit={onResizeCommit} currentPx={currentWidthPx} />
     </aside>
   );
-}
-
-// Inline confirm for the Clear row. Keeps the same row footprint so the
-// sidebar layout doesn't reflow.
-function ClearConfirm({ onConfirm, onCancel }: { onConfirm: () => void; onCancel: () => void }) {
-  return (
-    <div
-      className="mx-2 my-1 rounded-md border border-alert/30 bg-alert/5 px-3 py-2"
-      data-testid="clear-confirm"
-    >
-      <p className="text-[12px] text-fg-secondary">Clear loaded text?</p>
-      <div className="mt-2 flex gap-2">
-        <button
-          type="button"
-          onClick={onConfirm}
-          className="flex-1 rounded-md border border-alert bg-alert/10 px-2 py-1 text-[12px] font-medium text-alert transition-colors hover:bg-alert hover:text-canvas"
-        >
-          Clear
-        </button>
-        <button
-          type="button"
-          onClick={onCancel}
-          className="flex-1 rounded-md px-2 py-1 text-[12px] text-fg-tertiary transition-colors hover:text-fg-secondary"
-        >
-          Cancel
-        </button>
-      </div>
-    </div>
-  );
-}
-
-// "Current text" rail item is selected implicitly when not in settings.
-// Future history feature will replace this with real click semantics
-// (selecting a saved snippet to load into the panel).
-function selectCurrent(): void {
-  return;
 }

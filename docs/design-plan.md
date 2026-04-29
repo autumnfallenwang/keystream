@@ -94,10 +94,9 @@ Font family stack is locked (Q15). UI scale (`--font-scale`, range 50–200%) is
 The webview is two columns: a **resizable sidebar** (left) and the **main column** (right, fills remainder).
 
 - **Region 1 — Sidebar** (resizable 180–600px, default 260px). Composition depends on whether v2-8 file explorer has shipped — see Region 1 detail below.
-- **Region 2 — Main column.** Three vertical sub-regions:
-  - **2a. Header** (52px) — gates (`✓ Text loaded`, `✓ Accessibility`) on the left switching to a status indicator during send/pause; Edit/Lock segmented switch on the right.
-  - **2b. Body** — the text panel. Edit mode = `<textarea>` + sibling gutter. Locked mode = `<pre>` + gutter + active-line indicator (scanline + tinted background, Q16).
-  - **2c. Action bar** (72px sticky bottom) — status line above + two buttons (Send/Pause/Resume primary, Stop secondary), centered, `--bg-elevated` background, hairline-strong top border.
+- **Region 2 — Main column.** Two vertical sub-regions (Q21 collapsed the original 2a/2c into a single consolidated header):
+  - **2a. Consolidated header** (~56–60px) — filename (left) · Edit/Lock toggle, Wrap toggle, Send/Pause/Resume, Stop (right). Status line during send sits as a thin sub-row below. See Q21.
+  - **2b. Body** — the text panel. Edit mode = `<textarea>` + sibling gutter. Locked mode = `<pre>` + gutter + active-line indicator (scanline + tinted background, Q16). Wrap toggle (Q21) flips between `white-space: pre` (default) and soft-wrap.
 - **Region 3 — Countdown overlay.** Fullscreen frosted-glass scrim with Fraunces 220px numeral and a ring filling clockwise. Fires on every Send and Resume. Esc cancels (Q14).
 - **Region 4 — Settings shell** (Q15). When entering Settings, the entire sidebar swaps to a Settings nav rail (`← Back to text` + Appearance / Timing / Advanced); the main column shows the active section's pane. Sections render through `<SettingsSection title help? card?>` (Q17): h2 title + optional `?` info icon (lucide `Info` with native tooltip) + card-wrapped content (`--bg-elevated`, hairline border, soft shadow, 16px padding). Reset to defaults lives in Advanced and inline-confirms (D-06 pattern).
 
@@ -222,6 +221,46 @@ Append-only. Q4–Q11 are RETIRED in v2 (the v1 OCR-pipeline decisions). Live de
 **Why 180 floor:** below this, the action buttons start truncating their labels. Below ~150 the wordmark also clips.
 
 **Why 600 ceiling:** the default 1280×820 window leaves 680px for the main column at 600 — usable but tight. Beyond that, users should resize the window.
+
+#### Q20 — File explorer treats every row as a try-to-open candidate; UTF-8 is the gate, not extensions
+
+**Decision:** Supersedes Q18's claim that "non-text files render `FileX` ... non-clickable" and that the `TEXT_FILE_EXTENSIONS` allowlist gates row clickability. Every file row is clickable. On click, the app attempts `read_text_file`; if the file isn't valid UTF-8 (or exceeds the 1 MiB cap), the main panel area swaps to a non-blocking warning view (filename + reason + a "← Back" button to restore the previously-loaded text). VSCode behaves the same way — it doesn't pre-judge by extension because Linux text files frequently have no extension at all (`Makefile`, `LICENSE`, `.bashrc`, `nginx.conf`).
+
+**Mechanism:**
+- Every file row in the tree is clickable. No `cursor-not-allowed`, no `disabled`. Folders still toggle on click.
+- Click → `read_text_file(path)`. The Rust side already validates UTF-8 and the 1 MiB cap and returns a typed error string.
+- On error: the main column body region (where TextPanel renders) swaps to a `<BinaryFileWarning>` view showing the filename, the underlying reason ("This file does not appear to be UTF-8 text" / "File too large: …"), and a "← Back" button. Clicking Back restores the previous text + lock state in the panel. The currently-loaded `text` state is **not** overwritten on failure.
+- On success: load + select normally.
+- Icons: still tinted by extension where we recognize one. Unknown / no-extension files use the generic `FileText` icon in `--fg-tertiary` (not the inert `FileX` in `--fg-quaternary` — that variant is retired).
+- The `TEXT_FILE_EXTENSIONS` constant survives only as the default filter for the **Open file…** OS dialog (which still benefits from a sensible default filter); it no longer gates clickability anywhere.
+
+**Why this isn't phase-sized:** No schema changes, no new IPC commands. Touches `file-tree.ts` (drop `isTextFile` gate), `file-explorer.tsx` (every row clickable, single icon path for unknowns), `page.tsx::handleSelectFile` (catch and surface the error), and a new `<BinaryFileWarning>` component in the main panel area. Plus tests.
+
+#### Q21 — Consolidated main header (filename + Edit/Lock + Wrap + Send/Stop); footer action bar retired
+
+**Decision:** Supersedes Q14's claim that the action bar is a separate 72px sticky footer with Send/Pause/Stop, and the visual contract's claim that Region 2a carries `✓ Text loaded` / `✓ Accessibility` gate chips. The main header becomes the single home for all per-file actions: filename (left) and Edit/Lock + Wrap + Send/Pause/Resume + Stop (right). Region 2c is removed; Region 2b (text panel) absorbs the freed pixels.
+
+**Layout (left → right):**
+- **Filename slot** — basename of the loaded file, e.g. `notes.txt`. Empty / `Untitled` when no file is loaded. The active-edge color and locked icon belong to the Edit/Lock toggle, not this slot.
+- `flex-1` spacer.
+- **Edit/Lock segmented switch** — same component as today (Q16-aligned).
+- **Wrap toggle** — icon-only button (lucide `WrapText`). On = soft-wrap; off = `white-space: pre` (Q16 default).
+- **Send button** (primary). Tri-state per Q14: `Send` → `Pause` (during sending) → `Resume` (during paused). Same accept-set.
+- **Stop button** (secondary). Always present, only enabled during `sending` / `paused`.
+
+**Status line during send:** thin sub-row below the header (`tabular-nums`, `--fg-tertiary`), not embedded in the header itself. This keeps the header buttons in stable positions during send.
+
+**Gates retired from the header.** "Text loaded" and "Accessibility" gates no longer have a chip. They still gate `canSend` (Send disabled until both pass); the failure reason surfaces through the disabled-button hover/`title` and — for Accessibility — a small inline warning row above the text panel only when the grant is missing.
+
+**Wrap state is per-session, not persisted.** Defaults to off (matching Q16's `white-space: pre`). If users want persistence later it's a separate D-NN.
+
+**Visual contract update.** Region 2a grows ~52px → ~56–60px. Region 2c is gone. Header background remains `--bg-elevated`; bottom hairline shifts to between header and text panel only.
+
+**Trade-offs accepted:**
+- Loses the always-visible "Accessibility ✓" reassurance. Hover-tooltip on disabled Send communicates it on first failure.
+- On narrower sidebars/windows the filename truncates. Q19 lets users widen the sidebar; the header has the full main-column width, so this is acceptable.
+
+**Why this isn't phase-sized:** Single visual surface (the header). Touches `main-header.tsx`, retires `action-bar.tsx`, adds wrap state to `text-panel.tsx`, rewires `page.tsx`. No schema changes, no new IPC commands.
 
 ## Build phases (v2 rewrite)
 

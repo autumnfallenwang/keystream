@@ -42,6 +42,20 @@ html {
   --sidebar-width: 260px;
 }
 
+/* Kill the macOS rubber-band / overscroll bounce app-wide. Tauri's
+   webview honours these. `overscroll-behavior: none` stops the elastic
+   wobble at scroll edges; `overflow: hidden` on body prevents the whole
+   page from being scrollable (only inner panes scroll). `scroll-behavior:
+   auto` disables CSS smooth-scroll if anything ever opts in. */
+html,
+body {
+  overscroll-behavior: none;
+  scroll-behavior: auto;
+}
+body {
+  overflow: hidden;
+}
+
 /* Theme overrides — applied to <html> by ThemeProvider via class.
    Plain `.theme-X-Y` selectors (NOT `:root.theme-X-Y`) — Tailwind 4's
    PostCSS plugin silently drops compound `:root.X` selectors. The class

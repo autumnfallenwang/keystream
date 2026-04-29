@@ -49,34 +49,18 @@ export async function openLogDir(): Promise<void> {
 // File loading (dialog plugin → Rust read_text_file)
 // ---------------------------------------------------------------------------
 
-const TEXT_FILE_EXTENSIONS = [
-  "txt",
-  "md",
-  "log",
-  "rs",
-  "ts",
-  "tsx",
-  "js",
-  "jsx",
-  "py",
-  "go",
-  "json",
-  "yml",
-  "yaml",
-  "toml",
-];
-
 export type PickedFile = { path: string; name: string };
 
 /**
- * Open the OS file picker for a single text file. Returns the picked path
- * and its basename, or null if the user cancelled.
+ * Open the OS file picker for any file. Q20 — no extension filter:
+ * the user can pick anything, and the UTF-8 / size check happens at
+ * read time. Binary picks surface a friendly warning view rather
+ * than being hidden by the OS dialog.
  */
 export async function pickTextFile(): Promise<PickedFile | null> {
   const picked = await openDialog({
     multiple: false,
     directory: false,
-    filters: [{ name: "Text", extensions: TEXT_FILE_EXTENSIONS }],
   });
   if (picked === null || typeof picked !== "string") {
     return null;
@@ -89,6 +73,48 @@ export async function pickTextFile(): Promise<PickedFile | null> {
  * caps at 1 MiB. */
 export async function readTextFile(path: string): Promise<string> {
   return await invoke<string>("read_text_file", { path });
+}
+
+// ---------------------------------------------------------------------------
+// File explorer (Q18 — Phase v2-8)
+// ---------------------------------------------------------------------------
+
+import type { FolderTree } from "@/lib/core/file-tree";
+
+export type { FolderTree, TreeNode } from "@/lib/core/file-tree";
+
+/** Open the OS folder picker. Returns the picked absolute path, or
+ * null on cancel. */
+export async function pickFolder(): Promise<string | null> {
+  const picked = await openDialog({ multiple: false, directory: true });
+  if (picked === null || typeof picked !== "string") {
+    return null;
+  }
+  return picked;
+}
+
+/** Read a folder's tree (depth ≤ 6, ≤500 nodes/folder, hidden names
+ * filtered server-side). */
+export async function readFolderTree(path: string): Promise<FolderTree> {
+  return await invoke<FolderTree>("read_folder_tree", { path });
+}
+
+/** Ephemeral session state — last folder, selected file, expanded
+ * paths. Sibling to `Settings`. */
+export type AppStateCfg = {
+  lastFolder: string | null;
+  selectedFile: string | null;
+  expandedPaths: string[];
+};
+
+/** Read the persisted explorer state. Returns defaults on first launch. */
+export async function getAppState(): Promise<AppStateCfg> {
+  return await invoke<AppStateCfg>("get_state");
+}
+
+/** Persist the explorer state to <app_data_dir>/state.json. */
+export async function saveAppState(cfg: AppStateCfg): Promise<void> {
+  await invoke("save_state", { cfg });
 }
 
 // ---------------------------------------------------------------------------

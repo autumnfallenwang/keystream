@@ -90,6 +90,28 @@ fn settings_default_via_public_api() {
     assert_eq!(cfg.countdown_secs, COUNTDOWN_SECS);
 }
 
+#[test]
+fn read_folder_tree_roundtrip_via_public_api() {
+    let dir = std::env::temp_dir().join("kstest_smoke_read_folder_tree");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("a.txt"), b"").unwrap();
+    std::fs::write(dir.join("b.md"), b"").unwrap();
+    let tree =
+        keystream_lib::folder_tree::read_folder_tree(dir.to_string_lossy().into_owned()).unwrap();
+    assert_eq!(tree.children.len(), 2);
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn state_default_via_public_api() {
+    use keystream_lib::state::AppStateCfg;
+    let cfg = AppStateCfg::default();
+    assert!(cfg.last_folder.is_none());
+    assert!(cfg.selected_file.is_none());
+    assert!(cfg.expanded_paths.is_empty());
+}
+
 // ---- Compile-time signature checks for runtime-only commands ----
 // Never called. Forces the compiler to verify each function exists.
 // A regression that drops an underlying fn (e.g. removing
@@ -112,4 +134,7 @@ fn _signature_checks() {
     let _ = keystream_lib::send::run_send;
     let _ = keystream_lib::send::pause_send;
     let _ = keystream_lib::send::stop_send;
+    let _ = keystream_lib::folder_tree::read_folder_tree;
+    let _ = keystream_lib::state::get_state;
+    let _ = keystream_lib::state::save_state;
 }

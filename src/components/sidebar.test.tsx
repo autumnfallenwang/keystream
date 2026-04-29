@@ -1,13 +1,18 @@
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
+import type { FolderTree } from "@/lib/core/file-tree";
 import { Sidebar, type SidebarProps } from "./sidebar";
 
 function defaults(overrides: Partial<SidebarProps> = {}): SidebarProps {
   return {
-    onLoadFile: vi.fn(),
-    onClear: vi.fn(),
-    clearDisabled: false,
+    tree: null,
+    selectedPath: null,
+    expandedPaths: new Set<string>(),
+    onOpenFile: vi.fn(),
+    onOpenFolder: vi.fn(),
+    onSelectFile: vi.fn(),
+    onToggleFolder: vi.fn(),
     onOpenSettings: vi.fn(),
     inSettings: false,
     appVersion: "0.1.0",
@@ -29,11 +34,18 @@ describe("Sidebar", () => {
     expect(screen.getByText("v1.2.3")).toBeInTheDocument();
   });
 
-  it("Current text rail item is active when not in settings", () => {
-    render(<Sidebar {...defaults({ inSettings: false })} />);
-    const current = screen.getByRole("button", { name: /current text/i });
-    // Active rail items render an active-edge bar.
-    expect(within(current).getByTestId("active-edge")).toBeInTheDocument();
+  it("Open file button invokes onOpenFile", async () => {
+    const onOpenFile = vi.fn();
+    render(<Sidebar {...defaults({ onOpenFile })} />);
+    await userEvent.click(screen.getByRole("button", { name: /open file/i }));
+    expect(onOpenFile).toHaveBeenCalledOnce();
+  });
+
+  it("Open folder button invokes onOpenFolder", async () => {
+    const onOpenFolder = vi.fn();
+    render(<Sidebar {...defaults({ onOpenFolder })} />);
+    await userEvent.click(screen.getByRole("button", { name: /open folder/i }));
+    expect(onOpenFolder).toHaveBeenCalledOnce();
   });
 
   it("Settings rail item is active when in settings", () => {
@@ -42,56 +54,50 @@ describe("Sidebar", () => {
     expect(within(settings).getByTestId("active-edge")).toBeInTheDocument();
   });
 
-  it("Load file button invokes onLoadFile", async () => {
-    const onLoadFile = vi.fn();
-    render(<Sidebar {...defaults({ onLoadFile })} />);
-    await userEvent.click(screen.getByRole("button", { name: /load file/i }));
-    expect(onLoadFile).toHaveBeenCalledOnce();
-  });
-
-  it("Clear button shows inline confirm on first click (D-06)", async () => {
-    const onClear = vi.fn();
-    render(<Sidebar {...defaults({ onClear, clearDisabled: false })} />);
-    await userEvent.click(screen.getByRole("button", { name: /^clear$/i }));
-    // First click does NOT invoke onClear — it surfaces the confirm.
-    expect(onClear).not.toHaveBeenCalled();
-    expect(screen.getByTestId("clear-confirm")).toBeInTheDocument();
-    expect(screen.getByText(/Clear loaded text\?/)).toBeInTheDocument();
-  });
-
-  it("Confirming Clear inline invokes onClear", async () => {
-    const onClear = vi.fn();
-    render(<Sidebar {...defaults({ onClear, clearDisabled: false })} />);
-    await userEvent.click(screen.getByRole("button", { name: /^clear$/i }));
-    // After surfacing the confirm panel, click the destructive Clear button
-    // INSIDE the panel.
-    const panel = screen.getByTestId("clear-confirm");
-    await userEvent.click(within(panel).getByRole("button", { name: /^clear$/i }));
-    expect(onClear).toHaveBeenCalledOnce();
-  });
-
-  it("Cancelling the Clear confirm reverts to the rail row without firing onClear", async () => {
-    const onClear = vi.fn();
-    render(<Sidebar {...defaults({ onClear, clearDisabled: false })} />);
-    await userEvent.click(screen.getByRole("button", { name: /^clear$/i }));
-    const panel = screen.getByTestId("clear-confirm");
-    await userEvent.click(within(panel).getByRole("button", { name: /cancel/i }));
-    expect(onClear).not.toHaveBeenCalled();
-    expect(screen.queryByTestId("clear-confirm")).toBeNull();
-    // Original Clear rail row is back.
-    expect(screen.getByRole("button", { name: /^clear$/i })).toBeInTheDocument();
-  });
-
-  it("Clear button is disabled when clearDisabled=true", () => {
-    render(<Sidebar {...defaults({ clearDisabled: true })} />);
-    expect(screen.getByRole("button", { name: /^clear$/i })).toBeDisabled();
-  });
-
   it("Settings rail item invokes onOpenSettings", async () => {
     const onOpenSettings = vi.fn();
     render(<Sidebar {...defaults({ onOpenSettings })} />);
     await userEvent.click(screen.getByRole("button", { name: /settings/i }));
     expect(onOpenSettings).toHaveBeenCalledOnce();
+  });
+
+  it("renders the file explorer empty state when tree is null", () => {
+    render(<Sidebar {...defaults({ tree: null })} />);
+    expect(screen.getByTestId("file-explorer-empty")).toBeInTheDocument();
+  });
+
+  it("renders the file explorer with the supplied tree", () => {
+    const tree: FolderTree = {
+      rootPath: "/proj",
+      rootName: "proj",
+      children: [{ kind: "file", path: "/proj/a.ts", name: "a.ts" }],
+      truncated: 0,
+    };
+    render(<Sidebar {...defaults({ tree })} />);
+    expect(screen.getByTestId("file-explorer")).toBeInTheDocument();
+    expect(screen.getByTestId("file-row-/proj/a.ts")).toBeInTheDocument();
+  });
+
+  it("D-10 — renders the Explorer section header with collapse toggle", () => {
+    render(<Sidebar {...defaults()} />);
+    const toggle = screen.getByTestId("explorer-section-toggle");
+    expect(toggle).toBeInTheDocument();
+    expect(toggle).toHaveTextContent(/Explorer/i);
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
+  });
+
+  it("D-10 — clicking the Explorer header toggles its body", async () => {
+    const tree: FolderTree = {
+      rootPath: "/proj",
+      rootName: "proj",
+      children: [{ kind: "file", path: "/proj/a.ts", name: "a.ts" }],
+      truncated: 0,
+    };
+    render(<Sidebar {...defaults({ tree })} />);
+    expect(screen.getByTestId("file-explorer")).toBeInTheDocument();
+    await userEvent.click(screen.getByTestId("explorer-section-toggle"));
+    expect(screen.queryByTestId("file-explorer")).toBeNull();
+    expect(screen.getByTestId("explorer-section-toggle")).toHaveAttribute("aria-expanded", "false");
   });
 
   it("Q19: renders the resize handle", () => {

@@ -26,6 +26,36 @@ Rows below are listed newest-first within each type.
 
 ## Design changes
 
+### D-13 — Consolidated main header: filename + Edit/Lock + Wrap toggle + Send/Stop; retire footer action bar
+**Where:** `src/components/main-header.tsx`, `src/components/action-bar.tsx` (retired), `src/components/text-panel.tsx` (wrap), `src/app/page.tsx` (wiring), plus visual-contract update in `design-plan.md`.
+**Observed:** Current header carries two gate chips (✓ Text loaded, ✓ Accessibility) + Edit/Lock toggle. The 72px sticky footer action bar carries Send/Pause/Stop + the during-send status line. User wants: drop the gate chips, show the loaded filename instead; eliminate the footer entirely; pull Send/Stop into the header alongside Edit/Lock; add a Wrap-long-lines toggle; arrange the four controls cohesively.
+**Locked under:** Q21 in `design-plan.md` (supersedes Q14 visual contract Region 2a/2c claims).
+**Status:** in-progress (Q21 locked, awaiting fire)
+
+### D-12 — Try-as-text for any file the user clicks (no extension allowlist)
+**Where:** `src/components/file-explorer.tsx`, `src/lib/core/file-tree.ts::isTextFile`, `src/app/page.tsx::handleSelectFile`, plus a new `<BinaryFileWarning>` component in the main panel area.
+**Observed:** Q18 currently blocks non-allowlist files (PNG, MP3, .db, etc.) at the row level — they render dimmed and inert. User wants VSCode-style behavior: every row is clickable, the app tries to read it as text, and if the contents aren't valid UTF-8, surface a clear warning view inside the main panel with a "← Back" button. Linux text files often have no extension at all, so the allowlist over-blocks.
+**Locked under:** Q20 in `design-plan.md` (supersedes Q18's allowlist gate).
+**Status:** done
+
+### D-11 — Sidebar sections need separator rules between them
+**Where:** `src/components/sidebar.tsx`.
+**Observed:** Top action rows, the file-explorer section, and the bottom Settings/version block all sit in the sidebar without visual separation. The footer block already has `border-t border-hairline-soft` — the explorer section above it has no equivalent above-line.
+**Proposed:** Add hairline separators between sidebar sections so the structure reads at a glance.
+**Status:** done
+
+### D-10 — File/folder section in sidebar needs a section header with collapse
+**Where:** `src/components/sidebar.tsx`, `src/components/file-explorer.tsx`.
+**Observed:** The file-explorer area sits directly below the action rows with no section header. Other sidebars (Settings) use eyebrows. Q18 mentions a root-name eyebrow inside FileExplorer but it only appears once a folder is loaded, and there's no collapse affordance for the whole section.
+**Proposed:** Promote the explorer to a real sidebar section with a fixed header label (e.g. "Explorer") and a chevron that collapses the entire content. Distinct from per-folder collapse inside the tree.
+**Status:** done
+
+### D-09 — After Open file (single file), show that filename in the explorer area
+**Where:** `src/components/sidebar.tsx`, `src/components/file-explorer.tsx`, `src/app/page.tsx::handleLoadFile`.
+**Observed:** When the user uses **Open file…** for a single file (no folder context), the explorer area still shows "No folder loaded." The file is loaded into the panel but the sidebar doesn't reflect it — there's no way to confirm at a glance which file is currently active.
+**Proposed:** When a single file is loaded (no folder), render a single-row indicator in the explorer area showing just that filename, with the same active-edge styling as a selected tree row.
+**Status:** done
+
 ### D-08 — VSCode-style file explorer sidebar
 **Where:** `src/components/sidebar.tsx`, plus new `src/components/explorer/` directory and new Rust `pick_folder` + `read_folder_tree` commands.
 **Observed:** Single-file picker is enough for one-shot text drops but not for browsing a project tree. User wants `Open folder` alongside `Open file`, with a collapsible VSCode-style tree below the action buttons.

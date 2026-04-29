@@ -1,4 +1,5 @@
 pub mod file_io;
+pub mod folder_tree;
 mod json_log;
 pub mod log_commands;
 pub mod permissions;
@@ -6,6 +7,7 @@ pub mod persist;
 pub mod send;
 mod send_state;
 pub mod settings;
+pub mod state;
 pub mod validation;
 
 use std::path::PathBuf;
@@ -67,6 +69,9 @@ pub fn run() {
             send::run_send,
             send::pause_send,
             send::stop_send,
+            folder_tree::read_folder_tree,
+            state::get_state,
+            state::save_state,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

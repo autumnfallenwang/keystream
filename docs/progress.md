@@ -20,13 +20,13 @@ v1 freeze: 140 cargo tests + 78 vitest tests passing. Most v1 code becomes obsol
 | v2-4 | Rewrite frontend for the locked v2 UI | done |
 | v2-5 | Settings pane (Q13) — 4 dials + persistence | done — operator smoke pending |
 | v2-7 | Settings shell + Appearance (Q15, Q17) | done — operator smoke pending |
-| v2-9 | User-resizable sidebar width (Q19) | pending |
-| v2-8 | File explorer sidebar (Q18) | pending — depends on v2-9 |
-| v2-6 | Polish + ship | pending — depends on v2-9 + v2-8 |
+| v2-9 | User-resizable sidebar width (Q19) | done — operator smoke pending |
+| v2-8 | File explorer sidebar (Q18) | done — operator smoke pending |
+| v2-6 | Polish + ship | pending |
 
 Each phase's contract + rationale: see the matching Q-decision(s) in [`design-plan.md`](design-plan.md). Each phase's implementation plan is drafted by `/dev-task` at the time of fire and lives in `~/.claude/plans/`.
 
-**Current test count:** 183 vitest passing · 75 cargo passing.
+**Current test count:** 257 vitest passing · 103 cargo passing.
 
 ## What's Next
 
@@ -41,4 +41,4 @@ Each phase's contract + rationale: see the matching Q-decision(s) in [`design-pl
 
 Items 1–5 are quick (under 5 min total). Item 6 is the bigger commitment — after it succeeds, v2 is end-to-end validated and **Phase v2-6** (polish + ship) begins.
 
-**Phases v2-9 + v2-8** can fire any time via `/dev-task`. v2-9 (sidebar resize) is small; v2-8 (file explorer) is larger and benefits from v2-9 landing first so the explorer ships into a sidebar that already accommodates wider trees.
+**Phase v2-6** (polish + ship) is the last remaining phase. Code-side scope is small — final UI polish, manual smokes against a built `.app` bundle, and shipping. The operator handoff items above (1–6) gate v2-6's start.
