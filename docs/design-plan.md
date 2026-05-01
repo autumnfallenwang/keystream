@@ -262,6 +262,75 @@ Append-only. Q4–Q11 are RETIRED in v2 (the v1 OCR-pipeline decisions). Live de
 
 **Why this isn't phase-sized:** Single visual surface (the header). Touches `main-header.tsx`, retires `action-bar.tsx`, adds wrap state to `text-panel.tsx`, rewires `page.tsx`. No schema changes, no new IPC commands.
 
+#### Q22 — Replace hand-rolled text panel with CodeMirror 6 — Phase v2-10
+
+**Decision:** Supersedes Q16's claim that the gutter, line-height geometry, and edit/lock split are implemented in-house. The text panel (`src/components/text-panel.tsx`) swaps from `<textarea>` + `<pre>` + custom gutter + measure-mirror to **CodeMirror 6** as the rendering engine. The Q16 *contract* is preserved (gutter visible in both modes, soft-wrap toggleable, line-height stable across `--font-scale`); only the *implementation* changes. The Q14 SendControl contract and Q21 wrap-toggle behavior are unchanged — they re-bind to CodeMirror primitives.
+
+**Why now (audit signals):** The 2026-04-30 component audit (`docs/audits/audit-2026-04-30.md`) scored the text panel at **5/5 signals**: bug-ratio inversion (B-02 + B-03 + multiple in-feature reworks during D-13), edge-case avalanche (wrap-with-gutter math, scrollbar-gutter, mirror DOM, overscroll, auto-indent in receiving editors as the *next* class of problem), foundation-becomes-ceiling (no syntax highlighting, find/replace, undo, virtualization), knowledge isolation (`useLineHeights` is our private invention with no doc surface), defensive justification (the audit skill itself opens with this file as the canonical "should have bought it" example). It's the only file in scope to fire all five.
+
+**What CodeMirror gives us for free:**
+- Gutter + line numbers with reliable wrap-mode alignment (replaces `useLineHeights`, the measure-mirror, `scrollbar-gutter: stable`).
+- Read-only mode via `EditorState.readOnly.of(true)` (replaces the `EditView`/`LockedView` split).
+- Soft-wrap via `Compartment.reconfigure(EditorView.lineWrapping)` (replaces the wrap branches in `text-panel.tsx`).
+- Syntax highlighting for our text-allowlist languages (`@codemirror/lang-{javascript,python,rust,json,markdown,...}`). New capability, not just a swap — we get it as a side effect.
+- Virtualized rendering for long files. Not currently a bottleneck; nice to have.
+
+**Domain extensions to port (the parts that stay):**
+- **Active-line scanline (Q14):** ported as a `Decoration.line({ class })` driven by a `StateField` listening for `charsTyped` updates from the reducer. The CSS class keeps our existing `bg-accent-glow` + `border-l-2 border-accent` + `::before` scanline animation; only the *binding* changes.
+- **Wrap toggle (Q21):** `Compartment.reconfigure(EditorView.lineWrapping)` toggled by the same `wrap` state in `page.tsx`. Per-session, defaults off.
+- **Lock mode (Q14 / Q16):** `readOnly` flag on the editor state. Same `locked` boolean from `page.tsx` flips it.
+- **Empty-state ("Drop a file here, or click to load"):** stays hand-rolled. CodeMirror only mounts when there's text; the empty state remains a simple JSX branch in `<TextPanel>`.
+- **Language autodetection:** extend `src/lib/core/file-tree.ts` with a sibling `pickLanguage(name: string)` that returns the matching `@codemirror/lang-*` extension (or none for unknown / no-extension files). Mirrors `classifyIcon`.
+
+**Boundary preserved:** the swap lives entirely behind `<TextPanel>`. Props stay (`text`, `locked`, `state`, `wrap`, `onTextChange`, `onLoadFile`). `page.tsx` doesn't change. The IPC bridge doesn't change. The send pipeline doesn't change.
+
+**Bundle cost:** ~80–120 KB gzipped (CodeMirror core ~50 KB + 5–15 KB per language × 5 languages). Net delta is roughly neutral after deleting `useLineHeights` (~50 lines), the mirror DOM (~30 lines), and the dual-view split (~80 lines).
+
+**Next.js / Tauri compatibility:** CodeMirror runs entirely in the browser; safe under our existing `dynamic({ ssr: false })` mount of `<TextPanel>`. No Tauri-specific concerns. Optional convenience wrapper `@uiw/react-codemirror` saves ~30 lines of mount/unmount/sync boilerplate; using it or hand-rolling the `useEffect` constructor are both acceptable.
+
+**Trade-offs accepted:**
+- Bundle size grows ~100 KB. Acceptable: the JS bundle is ~500 KB today; this is a 20% increase for material new capability.
+- The hand-rolled active-line scanline animation must be re-validated under CodeMirror's render lifecycle — there's a small risk that the scanline behaves differently when the line is wrapped or virtualized off-screen.
+- Test count drops as we delete custom geometry tests. Net `pnpm test` will likely be lower after this phase, not higher. That's correct — fewer tests because there's less custom code, not because coverage shrinks.
+
+**Find / Replace (in scope, added during v2-10):** `@codemirror/search` provides ⌘F (find), ⌘G (find next), ⌘⇧G (find previous), ⌘⌥F (find + replace). Panel themed against our CSS tokens so light/dark mode swaps invert it alongside the rest of the editor. ~10 KB gzipped.
+
+**Out of scope for v2-10:**
+- Multi-cursor / multi-selection (default behavior is fine; no UI changes).
+- Code completion / IntelliSense (Monaco territory; we don't need it).
+- Theme integration with Q15 palettes (initial port uses CodeMirror's defaults; theming via `EditorView.theme(...)` against our CSS tokens is a follow-up).
+
+#### Q23 — Replace hand-rolled sidebar resize handle with react-resizable-panels — Phase v2-11
+
+**Decision:** Supersedes Q19's claim that the sidebar resize handle is implemented in-house. The hand-rolled `<ResizeHandle>` (`src/components/resize-handle.tsx`) swaps to **react-resizable-panels** as the drag-and-resize engine. The Q19 *contract* is preserved (sidebar width persisted in settings.json, clamped to [SIDEBAR_WIDTH_MIN=180, SIDEBAR_WIDTH_MAX=600] px, default 260, double-click resets to default, live `--sidebar-width` CSS var update during drag); only the *implementation* changes.
+
+**Why now (signals):** Two of the five fire on the resize handle today. (1) **Bug-ratio inversion** — the active walkthrough finding "drag doesn't stick to the mouse" is the third UX iteration on this component (snap-to-cursor → anchor-with-fixed-offset → pure-relative-motion); each fix uncovered the next class of problem. (2) **Defensive justification** — the file's opening comment is a 15-line apology explaining why the third iteration is the right one and why the previous two failed. Library-grade pointer event handling (capture, pointermove vs mousemove, edge cases at viewport boundaries) is a class of problem off-the-shelf has solved. The audit kept this in "keep" territory at the time but flagged "revisit if 2+ signals fire" — they have.
+
+**What react-resizable-panels gives us for free:**
+- Pointer-precise drag tracking via Pointer Events API (no `mousemove` jitter, captures pointer for the whole drag, tracks past viewport edges natively).
+- Keyboard resize support (Arrow Left/Right) + ARIA roles owned by the library.
+- Multi-pane support if we ever add a second pane (right-side info, file diff). Free upgrade.
+- Constraint enforcement (min/max sizes) handled in-library, no `clampSidebarWidth` round-trip during drag.
+
+**Domain extensions to port (the parts that stay):**
+- **Pixel-based persistence (Q19):** the library sizes panels in percentages of viewport width. We convert at the boundary: persisted `sidebarWidthPx` → `(px / window.innerWidth) * 100` on mount; `onLayout` callback returns `[sidebarPct, mainPct]` → `sidebarWidthPx = sidebarPct * window.innerWidth / 100` on commit. The min/max constants stay in `sidebar-width.ts` and are converted to percentages at mount time too.
+- **Double-click reset to default:** library's `<PanelResizeHandle>` exposes `onDoubleClick`; we dispatch the same reset path as today.
+- **Settings persistence (debounced):** the existing `handleSidebarCommit` callback fires on `onLayout` after the user releases the drag. Same debounce timing.
+- **CSS var bridge:** during drag, the library updates panel sizes via inline `flex-basis`. We keep `--sidebar-width` for any non-panel consumer (currently none beyond the sidebar itself) by syncing it from `onLayout`.
+
+**Boundary preserved:** `<Sidebar>` and `<main>` are now both wrapped in a `<PanelGroup>` at the top of `<Home>`. The Sidebar's internal layout (wordmark, action rows, explorer, settings rail) doesn't change. `clampSidebarWidth` still validates persisted values on read.
+
+**Bundle cost:** ~12 KB gzipped. Net delete: ~100 lines (`resize-handle.tsx` + its test file). Net add: ~60 lines (PanelGroup wiring, %↔px conversion). Roughly neutral on size, strongly positive on robustness.
+
+**Trade-offs accepted:**
+- The library's px-vs-% boundary creates two units of truth during runtime. Mitigated by converting only at mount and on commit; in between, percentages are authoritative.
+- Window resizes during a session change the px↔% conversion ratio. Acceptable: the lib re-layouts proportionally on window resize, which matches user expectation better than the current behavior (the sidebar stays at fixed px regardless of window size).
+- Tests for the hand-rolled drag math get deleted (~6 tests). The library has its own test coverage; we keep tests that assert on our wiring (% conversion, clamp, persistence) but drop the ones that asserted on `mousemove` deltas.
+
+**Out of scope for v2-11:**
+- Adding a second resizable pane (right info panel, file diff view). The lib supports it; we have no current use case.
+- Vertical splits.
+
 ## Build phases (v2 rewrite)
 
 The v1 phases (1–6 + Phase 2.5) are retired. v2 phases below — each anchored to its load-bearing Q-decision. Live status + completion tracking lives in [`progress.md`](progress.md).
@@ -277,7 +346,9 @@ The v1 phases (1–6 + Phase 2.5) are retired. v2 phases below — each anchored
 | v2-7 | Q15, Q17 | Settings shell with sidebar nav + Appearance section. |
 | v2-9 | Q19 | User-resizable sidebar width. Runs before v2-8. |
 | v2-8 | Q18 | VSCode-style file explorer sidebar. Depends on v2-9. |
-| v2-6 | — | Polish + ship. Runs last; depends on v2-9 + v2-8. |
+| v2-10 | Q22 | Replace hand-rolled text panel with CodeMirror 6. Audit-driven (5/5 signals). |
+| v2-11 | Q23 | Replace hand-rolled sidebar resize handle with react-resizable-panels. Walkthrough-driven (2/5 signals). |
+| v2-6 | — | Polish + ship. Runs last; depends on v2-11. |
 
 For any pending phase, the implementation plan is drafted by `/dev-task` at fire time using the anchor Q-decision as the spec.
 

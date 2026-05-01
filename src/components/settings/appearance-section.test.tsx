@@ -8,6 +8,7 @@ const defaultAppearance: AppearanceCfg = {
   profile: "atelier",
   mode: "system",
   fontSize: 1.0,
+  editorFontSize: 13,
 };
 
 function defaults(overrides: Partial<AppearanceSectionProps> = {}): AppearanceSectionProps {

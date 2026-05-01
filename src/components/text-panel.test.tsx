@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { act, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import type { AppState } from "@/lib/core/app-state";
@@ -21,34 +21,44 @@ const pausedAt = (charsTyped: number): AppState => ({
   durationMs: 1_000,
 });
 
-describe("TextPanel — edit mode", () => {
+// Q22 — the editor's active-line decoration is dispatched in a useEffect
+// that runs after mount. Tests that assert on it need to flush that
+// effect first.
+async function flushEffects() {
+  await act(async () => {
+    await new Promise((r) => setTimeout(r, 0));
+  });
+}
+
+describe("TextPanel — empty state", () => {
   it("shows the empty-state hint when text is empty", () => {
     render(
       <TextPanel
         text=""
         locked={false}
         state={idle}
-        onTextChange={vi.fn()}
         wrap={false}
+        filename={null}
+        onTextChange={vi.fn()}
         onLoadFile={vi.fn()}
       />,
     );
     expect(screen.getByText(/drop a file here/i)).toBeInTheDocument();
   });
 
-  it("does not render a gutter in the empty state", () => {
+  it("does not mount the CodeMirror host in the empty state", () => {
     render(
       <TextPanel
         text=""
         locked={false}
         state={idle}
-        onTextChange={vi.fn()}
         wrap={false}
+        filename={null}
+        onTextChange={vi.fn()}
         onLoadFile={vi.fn()}
       />,
     );
-    // No line numbers when there's no text.
-    expect(screen.queryByText("1")).toBeNull();
+    expect(screen.queryByTestId("cm-host")).toBeNull();
   });
 
   it("Load file button invokes onLoadFile", async () => {
@@ -59,6 +69,7 @@ describe("TextPanel — edit mode", () => {
         locked={false}
         state={idle}
         wrap={false}
+        filename={null}
         onTextChange={vi.fn()}
         onLoadFile={onLoadFile}
       />,
@@ -66,153 +77,186 @@ describe("TextPanel — edit mode", () => {
     await userEvent.click(screen.getByRole("button", { name: /load file/i }));
     expect(onLoadFile).toHaveBeenCalledOnce();
   });
+});
 
-  it("renders an editable textarea when text is non-empty", () => {
+describe("TextPanel — editor mount", () => {
+  it("mounts the CodeMirror host when text is non-empty", () => {
     render(
       <TextPanel
         text="hello"
         locked={false}
         state={idle}
         wrap={false}
+        filename={null}
         onTextChange={vi.fn()}
         onLoadFile={vi.fn()}
       />,
     );
-    const ta = screen.getByDisplayValue("hello") as HTMLTextAreaElement;
-    expect(ta.tagName).toBe("TEXTAREA");
+    expect(screen.getByTestId("cm-host")).toBeInTheDocument();
   });
 
-  it("D-03: renders the gutter with line numbers in edit mode", () => {
+  it("renders the document text inside the editor", () => {
     render(
       <TextPanel
         text={"alpha\nbeta\ngamma"}
         locked={false}
         state={idle}
         wrap={false}
+        filename={null}
         onTextChange={vi.fn()}
         onLoadFile={vi.fn()}
       />,
     );
-    expect(screen.getByText("1")).toBeInTheDocument();
-    expect(screen.getByText("2")).toBeInTheDocument();
-    expect(screen.getByText("3")).toBeInTheDocument();
+    const host = screen.getByTestId("cm-host");
+    // CodeMirror renders the doc's content inside .cm-content. Check
+    // that each source line shows up — confirms the editor mounted with
+    // our `doc` and rendered through.
+    const content = host.querySelector(".cm-content");
+    expect(content).not.toBeNull();
+    expect(content?.textContent).toContain("alpha");
+    expect(content?.textContent).toContain("beta");
+    expect(content?.textContent).toContain("gamma");
   });
 
-  it("D-03: edit-mode gutter has no active-line marker (no '→' caret)", () => {
+  it("mounts cleanly with a known filename (language detection)", () => {
     render(
       <TextPanel
-        text={"alpha\nbeta\ngamma"}
+        text={"const x = 1;"}
         locked={false}
         state={idle}
         wrap={false}
+        filename="app.ts"
         onTextChange={vi.fn()}
         onLoadFile={vi.fn()}
       />,
     );
-    // The locked-mode '→ ' caret should never appear in edit mode, even
-    // if the app state happens to be in a sending-like shape.
-    expect(screen.queryByText(/→/)).toBeNull();
-  });
-
-  it("Q16: edit-mode textarea disables soft-wrap (whiteSpace: pre)", () => {
-    render(
-      <TextPanel
-        text={"a very long line that would otherwise wrap"}
-        locked={false}
-        state={idle}
-        wrap={false}
-        onTextChange={vi.fn()}
-        onLoadFile={vi.fn()}
-      />,
-    );
-    const ta = screen.getByDisplayValue(/a very long line/) as HTMLTextAreaElement;
-    expect(ta.style.whiteSpace).toBe("pre");
-    expect(ta.getAttribute("wrap")).toBe("off");
+    expect(screen.getByTestId("cm-host")).toBeInTheDocument();
   });
 });
 
-describe("TextPanel — locked mode", () => {
-  it("renders line numbers in the gutter", () => {
-    render(
-      <TextPanel
-        text={"alpha\nbeta\ngamma"}
-        locked={true}
-        state={idle}
-        wrap={false}
-        onTextChange={vi.fn()}
-        onLoadFile={vi.fn()}
-      />,
-    );
-    expect(screen.getByText("1")).toBeInTheDocument();
-    expect(screen.getByText("2")).toBeInTheDocument();
-    expect(screen.getByText("3")).toBeInTheDocument();
-  });
-
-  it("draws an active-line indicator while sending", () => {
-    // text is "abc\ndef" — 7 chars total. Sending with charsTyped=4 means
-    // the next char is on line 2 (index 1).
-    const text = "abc\ndef";
-    render(
-      <TextPanel
-        text={text}
-        locked={true}
-        state={sendingAt(4, text.length)}
-        wrap={false}
-        onTextChange={vi.fn()}
-        onLoadFile={vi.fn()}
-      />,
-    );
-    expect(screen.getByTestId("active-line")).toBeInTheDocument();
-    const scanline = screen.getByTestId("scanline");
-    expect(scanline.dataset.paused).toBe("false");
-  });
-
-  it("freezes the scanline when paused", () => {
-    const text = "abc\ndef";
-    render(
-      <TextPanel
-        text={text}
-        locked={true}
-        state={pausedAt(4)}
-        wrap={false}
-        onTextChange={vi.fn()}
-        onLoadFile={vi.fn()}
-      />,
-    );
-    const scanline = screen.getByTestId("scanline");
-    expect(scanline.dataset.paused).toBe("true");
-  });
-
-  it("renders no active-line indicator in idle mode", () => {
+describe("TextPanel — lock toggle (Q14, Q16)", () => {
+  it("locked=true makes the editor non-editable", async () => {
     render(
       <TextPanel
         text="abc"
         locked={true}
         state={idle}
         wrap={false}
+        filename={null}
         onTextChange={vi.fn()}
         onLoadFile={vi.fn()}
       />,
     );
-    expect(screen.queryByTestId("active-line")).toBeNull();
+    await flushEffects();
+    const content = document.querySelector(".cm-content");
+    expect(content?.getAttribute("contenteditable")).toBe("false");
   });
 
-  it("B-03 / Q16: gutter rows have explicit line-height matching content", () => {
-    // The gutter and content `<pre>` MUST share the same line-height so
-    // the columns align row-for-row. Both are anchored to 20.8px
-    // (= 13 × 1.6) regardless of the gutter's smaller font-size.
+  it("locked=false makes the editor editable", async () => {
     render(
       <TextPanel
-        text={"alpha\nbeta\ngamma"}
+        text="abc"
+        locked={false}
+        state={idle}
+        wrap={false}
+        filename={null}
+        onTextChange={vi.fn()}
+        onLoadFile={vi.fn()}
+      />,
+    );
+    await flushEffects();
+    const content = document.querySelector(".cm-content");
+    expect(content?.getAttribute("contenteditable")).toBe("true");
+  });
+});
+
+describe("TextPanel — wrap toggle (Q21)", () => {
+  it("wrap=true sets the lineWrapping class on the content", async () => {
+    render(
+      <TextPanel
+        text="abc"
+        locked={false}
+        state={idle}
+        wrap={true}
+        filename={null}
+        onTextChange={vi.fn()}
+        onLoadFile={vi.fn()}
+      />,
+    );
+    await flushEffects();
+    const content = document.querySelector(".cm-content");
+    expect(content?.classList.contains("cm-lineWrapping")).toBe(true);
+  });
+
+  it("wrap=false omits the lineWrapping class", async () => {
+    render(
+      <TextPanel
+        text="abc"
+        locked={false}
+        state={idle}
+        wrap={false}
+        filename={null}
+        onTextChange={vi.fn()}
+        onLoadFile={vi.fn()}
+      />,
+    );
+    await flushEffects();
+    const content = document.querySelector(".cm-content");
+    expect(content?.classList.contains("cm-lineWrapping")).toBe(false);
+  });
+});
+
+describe("TextPanel — active-line indicator (Q14)", () => {
+  it("draws an active-line decoration while sending", async () => {
+    // text "abc\ndef" — 7 chars; with charsTyped=4, the next char is on
+    // line index 1 (the "def" line).
+    render(
+      <TextPanel
+        text={"abc\ndef"}
+        locked={true}
+        state={sendingAt(4, 7)}
+        wrap={false}
+        filename={null}
+        onTextChange={vi.fn()}
+        onLoadFile={vi.fn()}
+      />,
+    );
+    await flushEffects();
+    const active = screen.getByTestId("active-line");
+    expect(active).toBeInTheDocument();
+    expect(active.dataset.paused).toBe("false");
+  });
+
+  it("freezes the scanline (data-paused=true) when paused", async () => {
+    render(
+      <TextPanel
+        text={"abc\ndef"}
+        locked={true}
+        state={pausedAt(4)}
+        wrap={false}
+        filename={null}
+        onTextChange={vi.fn()}
+        onLoadFile={vi.fn()}
+      />,
+    );
+    await flushEffects();
+    const active = screen.getByTestId("active-line");
+    expect(active.dataset.paused).toBe("true");
+  });
+
+  it("renders no active-line decoration in idle mode", async () => {
+    render(
+      <TextPanel
+        text={"abc\ndef"}
         locked={true}
         state={idle}
         wrap={false}
+        filename={null}
         onTextChange={vi.fn()}
         onLoadFile={vi.fn()}
       />,
     );
-    const lineOne = screen.getByText("1");
-    expect(lineOne.style.lineHeight).toBe("20.8px");
-    expect(lineOne.style.height).toBe("20.8px");
+    await flushEffects();
+    expect(screen.queryByTestId("active-line")).toBeNull();
   });
 });

@@ -22,11 +22,13 @@ v1 freeze: 140 cargo tests + 78 vitest tests passing. Most v1 code becomes obsol
 | v2-7 | Settings shell + Appearance (Q15, Q17) | done — operator smoke pending |
 | v2-9 | User-resizable sidebar width (Q19) | done — operator smoke pending |
 | v2-8 | File explorer sidebar (Q18) | done — operator smoke pending |
-| v2-6 | Polish + ship | pending |
+| v2-10 | Replace text panel with CodeMirror 6 (Q22) | done — operator smoke pending |
+| v2-11 | Replace sidebar resize handle with react-resizable-panels (Q23) | pending — walkthrough drag-drift fired this |
+| v2-6 | Polish + ship | pending — depends on v2-11 operator smoke |
 
 Each phase's contract + rationale: see the matching Q-decision(s) in [`design-plan.md`](design-plan.md). Each phase's implementation plan is drafted by `/dev-task` at the time of fire and lives in `~/.claude/plans/`.
 
-**Current test count:** 257 vitest passing · 103 cargo passing.
+**Current test count:** 274 vitest passing · 103 cargo passing.
 
 ## What's Next
 
@@ -41,4 +43,23 @@ Each phase's contract + rationale: see the matching Q-decision(s) in [`design-pl
 
 Items 1–5 are quick (under 5 min total). Item 6 is the bigger commitment — after it succeeds, v2 is end-to-end validated and **Phase v2-6** (polish + ship) begins.
 
-**Phase v2-6** (polish + ship) is the last remaining phase. Code-side scope is small — final UI polish, manual smokes against a built `.app` bundle, and shipping. The operator handoff items above (1–6) gate v2-6's start.
+**v2-10 operator smoke (CodeMirror 6 swap).** Now that the rendering engine is CodeMirror, run these alongside items 1–6 above:
+
+7. **Editor mounts on file open.** Open any `.ts`/`.py`/`.rs`/`.json`/`.md` file → text appears with syntax highlighting; line numbers in the gutter; cursor caret visible.
+8. **Edit / Lock toggle.** Type to edit; toggle Lock → cursor disappears, typing does nothing; toggle back to Edit → typing resumes. Undo (⌘Z) works (free win from CodeMirror's history extension).
+9. **Wrap toggle (Q21).** Toggle Wrap on → long lines wrap; gutter line numbers stay aligned to the start of each source line. Toggle off → no horizontal scroll glitches.
+10. **Active-line scanline (Q14).** Lock + Send → after countdown, active line shows the accent glow + ::before scanline animation. Pause → freezes mid-sweep. Resume → animates again. Stop → indicator clears.
+11. **Cross-file load.** Click another file in the explorer → editor swaps content; no flash; new language highlighting.
+12. **No-extension / unknown file.** Open a `Makefile` (or any `.xyz`) → editor mounts, no syntax highlighting, no crash.
+
+**Phase v2-11** (sidebar resize → react-resizable-panels) is the next code phase. Anchor: Q23 in `design-plan.md`. Triggered by a walkthrough finding ("drag doesn't stick to the mouse") that scored the hand-rolled `resize-handle.tsx` at 2/5 signals: bug-ratio inversion (third UX iteration on the same component) + defensive justification (15-line apology comment explaining the iteration history). Scope: swap drag engine while preserving Q19's px-based persistence + clamp + double-click reset. Estimated 30–45 minutes plus tests.
+
+**v2-11 operator smoke** (after the swap lands):
+
+13. **Drag tracks mouse exactly.** Click and hold the sidebar's right edge → drag → the edge stays glued to the cursor at every position from min (180px) to max (600px), no offset, no jitter.
+14. **Min/max clamps.** Drag past the left edge → sidebar snaps to 180px and stops. Drag past 600px → snaps to 600 and stops.
+15. **Double-click resets to default.** Double-click the resize handle → sidebar jumps to 260px.
+16. **Persists across relaunch.** Drag to ~340px → quit → relaunch → sidebar opens at 340px.
+17. **Window resize.** Resize the app window → sidebar reflows proportionally (new behavior — the lib's default; matches modern desktop apps).
+
+**Phase v2-6** (polish + ship) closes the v2 cycle. Depends on items 1–17 above being green.

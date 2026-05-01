@@ -167,7 +167,11 @@ export function reduce(state: AppState, event: AppEvent): AppState {
       return state;
 
     case "openSettings":
-      if (state.mode === "idle") {
+      // Settings is reachable from any non-active state. After Stop or
+      // a successful Done, the user should still be able to open
+      // Settings without first having to click somewhere to reset to
+      // idle. Reject only while a send is in flight.
+      if (state.mode === "idle" || state.mode === "stopped" || state.mode === "done") {
         return { mode: "settings" };
       }
       return state;

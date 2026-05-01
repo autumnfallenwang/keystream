@@ -3,6 +3,13 @@
 // the React explorer component (which classifies icons + prunes empty
 // folders for VSCode parity).
 
+import { javascript } from "@codemirror/lang-javascript";
+import { json } from "@codemirror/lang-json";
+import { markdown } from "@codemirror/lang-markdown";
+import { python } from "@codemirror/lang-python";
+import { rust } from "@codemirror/lang-rust";
+import type { Extension } from "@codemirror/state";
+
 export type TreeNode =
   | { kind: "file"; path: string; name: string }
   | {
@@ -149,6 +156,39 @@ export function toggleExpanded(set: ReadonlySet<string>, path: string): Set<stri
  * communicates to the user that a deeper subtree was elided). */
 export function pruneEmptyFolders(tree: FolderTree): FolderTree {
   return { ...tree, children: pruneNodes(tree.children) };
+}
+
+// Q22 — language autodetection for the CodeMirror text panel. Mirrors
+// `classifyIcon`'s extension lookup. Returns `null` for null/unknown/
+// no-extension; the editor mounts as plain text in that case. Adding a
+// new language: add the dep, add the case here.
+export function pickLanguage(name: string | null): Extension | null {
+  if (name === null) return null;
+  const ext = fileExtension(name);
+  switch (ext) {
+    case "js":
+    case "jsx":
+    case "mjs":
+    case "cjs":
+      return javascript({ jsx: ext === "jsx" });
+    case "ts":
+      return javascript({ typescript: true });
+    case "tsx":
+      return javascript({ jsx: true, typescript: true });
+    case "py":
+      return python();
+    case "rs":
+      return rust();
+    case "json":
+    case "json5":
+    case "jsonc":
+      return json();
+    case "md":
+    case "markdown":
+      return markdown();
+    default:
+      return null;
+  }
 }
 
 function pruneNodes(nodes: TreeNode[]): TreeNode[] {

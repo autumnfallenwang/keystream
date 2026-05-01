@@ -10,6 +10,10 @@ export type AppearanceCfg = {
   profile: ThemeProfile;
   mode: ThemeMode;
   fontSize: number;
+  /** Q22 — editor font size in CSS pixels. Independent from `fontSize`
+   * (the UI chrome scale) because the text panel is exempted from the
+   * UI zoom — see globals.css `.cm-editor` rule. */
+  editorFontSize: number;
 };
 
 const PROFILES: ReadonlySet<string> = new Set([
@@ -84,6 +88,23 @@ export function isScaleNear(a: number, b: number, epsilon = 0.001): boolean {
   return Math.abs(a - b) < epsilon;
 }
 
+// Q22 — editor font size (text panel only). In CSS pixels.
+export const EDITOR_FONT_SIZE_MIN = 10;
+export const EDITOR_FONT_SIZE_MAX = 24;
+export const EDITOR_FONT_SIZE_DEFAULT = 13;
+
+/** Parse a stored editor-font-size value into an integer pixel count
+ * clamped to [EDITOR_FONT_SIZE_MIN, EDITOR_FONT_SIZE_MAX]. Invalid
+ * input falls back to EDITOR_FONT_SIZE_DEFAULT. */
+export function parseEditorFontSize(raw: unknown): number {
+  const n = typeof raw === "number" ? raw : Number.parseFloat(String(raw));
+  if (!Number.isFinite(n)) return EDITOR_FONT_SIZE_DEFAULT;
+  const rounded = Math.round(n);
+  if (rounded < EDITOR_FONT_SIZE_MIN) return EDITOR_FONT_SIZE_MIN;
+  if (rounded > EDITOR_FONT_SIZE_MAX) return EDITOR_FONT_SIZE_MAX;
+  return rounded;
+}
+
 export function resolveTheme(mode: ThemeMode, systemPrefersDark: boolean): ResolvedMode {
   if (mode === "system") return systemPrefersDark ? "dark" : "light";
   return mode;
@@ -120,4 +141,5 @@ export const APPEARANCE_DEFAULT: AppearanceCfg = {
   profile: "atelier",
   mode: "system",
   fontSize: FONT_SIZE_DEFAULT,
+  editorFontSize: EDITOR_FONT_SIZE_DEFAULT,
 };

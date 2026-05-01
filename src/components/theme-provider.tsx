@@ -1,10 +1,14 @@
 "use client";
 
-// Side-effect-only component (Q15 + Q19). Reads the user's appearance
-// prefs and sidebar width from props and applies them to <html>:
+// Side-effect-only component (Q15 + Q19 + Q22). Reads the user's
+// appearance prefs and sidebar width from props and applies them to
+// <html>:
 //   - palette + mode → swaps the `theme-<profile>-<mode>` class on
 //     :root (or clears it for the bare Atelier-dark base)
-//   - font scale → sets the `--font-scale` CSS var on :root
+//   - font scale → sets the `--font-scale` CSS var on :root (UI chrome)
+//   - editor font size → sets the `--editor-font-size` CSS var on
+//     :root (text panel only — independent from UI scale because
+//     the editor is exempted from `zoom`)
 //   - sidebar width → sets the `--sidebar-width` CSS var on :root
 // When `mode === "system"`, listens to the OS color-scheme media query
 // and re-applies live. Renders nothing.
@@ -44,6 +48,7 @@ export function ThemeProvider({ appearance, sidebarWidthPx }: Props): null {
         root.classList.add(targetClass);
       }
       root.style.setProperty("--font-scale", String(appearance.fontSize));
+      root.style.setProperty("--editor-font-size", `${appearance.editorFontSize}px`);
       root.style.setProperty("--sidebar-width", `${sidebarWidthPx}px`);
     };
 
@@ -56,7 +61,13 @@ export function ThemeProvider({ appearance, sidebarWidthPx }: Props): null {
     const handle = () => apply();
     mql.addEventListener("change", handle);
     return () => mql.removeEventListener("change", handle);
-  }, [appearance.profile, appearance.mode, appearance.fontSize, sidebarWidthPx]);
+  }, [
+    appearance.profile,
+    appearance.mode,
+    appearance.fontSize,
+    appearance.editorFontSize,
+    sidebarWidthPx,
+  ]);
 
   return null;
 }

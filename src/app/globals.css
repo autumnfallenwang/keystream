@@ -33,12 +33,13 @@
   --background: var(--bg-canvas);
 }
 
-/* Q15 UI scale + Q19 sidebar width. Lives on html (not :root) so
-   Tailwind 4's theme token processing doesn't strip it. The
-   ThemeProvider also writes both via
+/* Q15 UI scale + Q19 sidebar width + Q22 editor font size. Lives on
+   html (not :root) so Tailwind 4's theme token processing doesn't
+   strip it. The ThemeProvider also writes these via
    `style.setProperty(...)` on documentElement. */
 html {
   --font-scale: 1;
+  --editor-font-size: 13px;
   --sidebar-width: 260px;
 }
 
@@ -347,6 +348,39 @@ body {
   }
 }
 
+/* Q22 — active-line decoration on CodeMirror lines. The Decoration.line
+   adds the .cm-active-glow class to the source line's <div>; the
+   ::before pseudo-element provides the animated scanline. When paused,
+   .cm-active-paused is added so the sweep freezes.
+   Use box-shadow inset rather than border-left so CodeMirror's
+   character-position cache is not invalidated by a 2px shift on the
+   active line (the shift would mis-align mouse hit-tests).
+   Background uses color-mix(...) at ~22% alpha rather than the
+   --accent-glow token (12.5% alpha) so the highlight reads clearly
+   against CodeMirror's full-line <div> rendering, which has different
+   stacking from the old hand-rolled <pre>. Works the same in every
+   palette because --accent inverts per theme. */
+.cm-active-glow {
+  position: relative;
+  background-color: color-mix(in srgb, var(--accent) 18%, transparent);
+  box-shadow: inset 3px 0 0 0 var(--accent);
+}
+
+.cm-active-glow::before {
+  content: "";
+  position: absolute;
+  inset-block: 0;
+  left: 0;
+  width: 1px;
+  background: var(--accent);
+  animation: scanline 800ms linear infinite;
+  pointer-events: none;
+}
+
+.cm-active-paused::before {
+  animation-play-state: paused;
+}
+
 body {
   background: var(--bg-canvas);
   color: var(--fg-primary);
@@ -360,6 +394,19 @@ body {
    everything proportionally without requiring a px→rem migration. */
 html {
   zoom: var(--font-scale);
+}
+
+/* Q22 — CodeMirror computes mouse hit-tests from
+   `getBoundingClientRect()` (returns post-zoom CSS pixels) against
+   its own pre-zoom layout cache. Any non-1.0 ancestor zoom shifts
+   clicks down-and-right proportionally to the click distance from
+   the zoom origin. Counter-zoom the editor back to native scale so
+   its hit-tests are correct; the trade-off is that the text panel
+   ignores --font-scale (it keeps its explicit text-[13px]).
+   Acceptable: users primarily scale UI chrome (sidebar, header,
+   buttons) — the editor font is independently sized. */
+.cm-editor {
+  zoom: calc(1 / var(--font-scale));
 }
 
 button {

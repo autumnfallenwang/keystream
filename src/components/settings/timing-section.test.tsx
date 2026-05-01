@@ -8,7 +8,7 @@ const defaultSettings: Settings = {
   modHoldMs: 10,
   warmupShift: true,
   countdownSecs: 3,
-  appearance: { profile: "atelier", mode: "system", fontSize: 1.0 },
+  appearance: { profile: "atelier", mode: "system", fontSize: 1.0, editorFontSize: 13 },
   sidebarWidthPx: 260,
 };
 

@@ -24,14 +24,26 @@ fn default_sidebar_width_px() -> u64 {
 }
 
 /// Q15 appearance config — palette profile, light/dark/system mode,
-/// proportional UI scale. The frontend is the source of truth for valid
-/// `profile` and `mode` strings; the backend stores them opaquely.
+/// proportional UI scale. Q22 — `editor_font_size` (in CSS pixels) is
+/// independent: the text panel is exempted from the UI zoom, so its
+/// size has its own dial. The frontend is the source of truth for
+/// valid `profile` and `mode` strings; the backend stores them
+/// opaquely.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AppearanceCfg {
     pub profile: String,
     pub mode: String,
     pub font_size: f32,
+    /// Editor font size in CSS pixels. `#[serde(default = ...)]` for
+    /// back-compat: pre-Q22 settings.json files (without the field)
+    /// load with the default 13.
+    #[serde(default = "default_editor_font_size")]
+    pub editor_font_size: u32,
+}
+
+fn default_editor_font_size() -> u32 {
+    13
 }
 
 impl Default for AppearanceCfg {
@@ -40,6 +52,7 @@ impl Default for AppearanceCfg {
             profile: "atelier".into(),
             mode: "system".into(),
             font_size: 1.0,
+            editor_font_size: default_editor_font_size(),
         }
     }
 }
@@ -117,7 +130,7 @@ pub fn get_settings(app: AppHandle) -> Result<SettingsCfg, String> {
     let path = settings_path(&app)?;
     let cfg = load_at(&path)?;
     log::info!(
-        "get_settings: event_pause_ms={} mod_hold_ms={} warmup_shift={} countdown_secs={} appearance.profile={} appearance.mode={} appearance.font_size={} sidebar_width_px={}",
+        "get_settings: event_pause_ms={} mod_hold_ms={} warmup_shift={} countdown_secs={} appearance.profile={} appearance.mode={} appearance.font_size={} appearance.editor_font_size={} sidebar_width_px={}",
         cfg.event_pause_ms,
         cfg.mod_hold_ms,
         cfg.warmup_shift,
@@ -125,6 +138,7 @@ pub fn get_settings(app: AppHandle) -> Result<SettingsCfg, String> {
         cfg.appearance.profile,
         cfg.appearance.mode,
         cfg.appearance.font_size,
+        cfg.appearance.editor_font_size,
         cfg.sidebar_width_px,
     );
     Ok(cfg)
@@ -135,7 +149,7 @@ pub fn save_settings(app: AppHandle, cfg: SettingsCfg) -> Result<(), String> {
     let path = settings_path(&app)?;
     save_at(&path, &cfg)?;
     log::info!(
-        "save_settings: event_pause_ms={} mod_hold_ms={} warmup_shift={} countdown_secs={} appearance.profile={} appearance.mode={} appearance.font_size={} sidebar_width_px={}",
+        "save_settings: event_pause_ms={} mod_hold_ms={} warmup_shift={} countdown_secs={} appearance.profile={} appearance.mode={} appearance.font_size={} appearance.editor_font_size={} sidebar_width_px={}",
         cfg.event_pause_ms,
         cfg.mod_hold_ms,
         cfg.warmup_shift,
@@ -143,6 +157,7 @@ pub fn save_settings(app: AppHandle, cfg: SettingsCfg) -> Result<(), String> {
         cfg.appearance.profile,
         cfg.appearance.mode,
         cfg.appearance.font_size,
+        cfg.appearance.editor_font_size,
         cfg.sidebar_width_px,
     );
     Ok(())
@@ -171,6 +186,7 @@ mod tests {
         assert_eq!(cfg.appearance.profile, "atelier");
         assert_eq!(cfg.appearance.mode, "system");
         assert!((cfg.appearance.font_size - 1.0).abs() < f32::EPSILON);
+        assert_eq!(cfg.appearance.editor_font_size, 13);
     }
 
     #[test]
@@ -184,6 +200,7 @@ mod tests {
                 profile: "solarized".into(),
                 mode: "light".into(),
                 font_size: 1.15,
+                editor_font_size: 16,
             },
             sidebar_width_px: 320,
         };
@@ -211,6 +228,7 @@ mod tests {
         assert!(appearance.get("profile").is_some());
         assert!(appearance.get("mode").is_some());
         assert!(appearance.get("fontSize").is_some());
+        assert!(appearance.get("editorFontSize").is_some());
     }
 
     #[test]
@@ -233,6 +251,7 @@ mod tests {
                 profile: "nord".into(),
                 mode: "dark".into(),
                 font_size: 1.3,
+                editor_font_size: 18,
             },
             sidebar_width_px: 420,
         };

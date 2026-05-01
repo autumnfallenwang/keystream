@@ -390,7 +390,10 @@ export default function Home() {
         try {
           const content = await readTextFile(path);
           setText(content);
-          setLocked(false);
+          // Default newly-loaded files to locked. Sending is the
+          // primary action; users can flip to Edit mode explicitly if
+          // they want to tweak the text first.
+          setLocked(true);
           setSelectedFile(path);
           setBinaryWarning(null);
           // Persist the selection alongside the current folder state.
@@ -427,6 +430,42 @@ export default function Home() {
   const handleBinaryWarningBack = useCallback(() => {
     setBinaryWarning(null);
   }, []);
+
+  // Refresh the explorer from disk. Re-reads:
+  //   - the folder tree (if a folder is loaded) so newly-created /
+  //     deleted / renamed files surface
+  //   - the currently-selected file's content (if any) so external
+  //     edits show up in the panel
+  // Gated on idle / done / stopped so the user can't refresh mid-send.
+  const handleRefreshExplorer = useCallback(() => {
+    const allowed =
+      appState.mode === "idle" || appState.mode === "done" || appState.mode === "stopped";
+    if (!allowed) {
+      void logWarning(`page: refresh_blocked mode=${appState.mode}`);
+      return;
+    }
+    void (async () => {
+      const folderPath = loadedFolder?.rootPath ?? null;
+      const filePath = selectedFile;
+      try {
+        if (folderPath !== null) {
+          const tree = await readFolderTree(folderPath);
+          setLoadedFolder(tree);
+        }
+        if (filePath !== null) {
+          const content = await readTextFile(filePath);
+          setText(content);
+          setBinaryWarning(null);
+          void saveText(content).catch((err) => {
+            void logWarning(`page: save_text_failed: ${String(err)}`);
+          });
+        }
+        await log(`page: refresh_explorer folder=${folderPath !== null} file=${filePath !== null}`);
+      } catch (err) {
+        void logErr(`page: refresh_failed: ${String(err)}`);
+      }
+    })();
+  }, [appState.mode, loadedFolder, selectedFile]);
 
   // Q21 — wrap toggle. Per-session, no persistence.
   const handleToggleWrap = useCallback(() => {
@@ -581,6 +620,8 @@ export default function Home() {
             onOpenFolder={handleOpenFolder}
             onSelectFile={handleSelectFile}
             onToggleFolder={handleToggleFolder}
+            onRefreshExplorer={handleRefreshExplorer}
+            canRefreshExplorer={loadedFolder !== null || selectedFile !== null}
             onOpenSettings={handleOpenSettings}
             inSettings={inSettings}
             onResize={handleSidebarResize}
@@ -589,59 +630,63 @@ export default function Home() {
           />
         )}
         <main className="flex flex-1 flex-col overflow-hidden">
-          {inSettings ? (
+          {/* Keep the text-panel branch mounted at all times so the
+              CodeMirror EditorView (and its search-panel state) survives
+              a Settings round-trip. Settings is layered on top by hiding
+              the text-panel branch via display:none. */}
+          <div className={`flex flex-1 flex-col overflow-hidden ${inSettings ? "hidden" : ""}`}>
+            <MainHeader
+              state={appState}
+              filename={headerFilename}
+              locked={locked}
+              totalChars={text.length}
+              wrap={wrap}
+              canSend={canSend}
+              sendDisabledReason={sendDisabledReason}
+              onToggleLocked={handleToggleLocked}
+              onToggleWrap={handleToggleWrap}
+              onSend={handleSend}
+              onPause={handlePause}
+              onResume={handleResume}
+              onStop={handleStop}
+            />
+            {!(permissions?.accessibility ?? true) && (
+              <button
+                type="button"
+                onClick={handleAccessibilityGate}
+                className="flex shrink-0 items-center justify-center gap-2 border-b border-warn/30 bg-warn/5 px-4 py-2 text-[12px] text-warn transition-colors hover:bg-warn/10"
+                data-testid="accessibility-warning-row"
+              >
+                <span>
+                  Accessibility permission is not granted — click to open System Settings.
+                </span>
+              </button>
+            )}
+            {binaryWarning === null ? (
+              <TextPanel
+                text={text}
+                locked={locked}
+                state={appState}
+                wrap={wrap}
+                filename={headerFilename}
+                onTextChange={setText}
+                onLoadFile={handleLoadFile}
+              />
+            ) : (
+              <BinaryFileWarning
+                filename={binaryWarning.filename}
+                reason={binaryWarning.reason}
+                onBack={handleBinaryWarningBack}
+              />
+            )}
+          </div>
+          {inSettings && (
             <SettingsShell
               settings={settings}
               onChange={handleSettingsChange}
               onReset={handleSettingsReset}
               activeTab={settingsTab}
             />
-          ) : (
-            <>
-              <MainHeader
-                state={appState}
-                filename={headerFilename}
-                locked={locked}
-                totalChars={text.length}
-                wrap={wrap}
-                canSend={canSend}
-                sendDisabledReason={sendDisabledReason}
-                onToggleLocked={handleToggleLocked}
-                onToggleWrap={handleToggleWrap}
-                onSend={handleSend}
-                onPause={handlePause}
-                onResume={handleResume}
-                onStop={handleStop}
-              />
-              {!(permissions?.accessibility ?? true) && (
-                <button
-                  type="button"
-                  onClick={handleAccessibilityGate}
-                  className="flex shrink-0 items-center justify-center gap-2 border-b border-warn/30 bg-warn/5 px-4 py-2 text-[12px] text-warn transition-colors hover:bg-warn/10"
-                  data-testid="accessibility-warning-row"
-                >
-                  <span>
-                    Accessibility permission is not granted — click to open System Settings.
-                  </span>
-                </button>
-              )}
-              {binaryWarning === null ? (
-                <TextPanel
-                  text={text}
-                  locked={locked}
-                  state={appState}
-                  wrap={wrap}
-                  onTextChange={setText}
-                  onLoadFile={handleLoadFile}
-                />
-              ) : (
-                <BinaryFileWarning
-                  filename={binaryWarning.filename}
-                  reason={binaryWarning.reason}
-                  onBack={handleBinaryWarningBack}
-                />
-              )}
-            </>
           )}
         </main>
         {showCountdown && (

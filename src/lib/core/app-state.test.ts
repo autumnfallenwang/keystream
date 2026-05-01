@@ -176,8 +176,22 @@ describe("reduce", () => {
     expect(next.mode).toBe("idle");
   });
 
-  it("openSettings is only allowed from idle", () => {
+  it("openSettings is allowed from idle, stopped, and done; rejected during a send", () => {
     expect(reduce({ mode: "idle" }, { kind: "openSettings" }).mode).toBe("settings");
+    const stopped: AppState = {
+      mode: "stopped",
+      charsTyped: 4,
+      totalChars: 10,
+      durationMs: 500,
+    };
+    expect(reduce(stopped, { kind: "openSettings" }).mode).toBe("settings");
+    const done: AppState = {
+      mode: "done",
+      chars: 10,
+      skipped: 0,
+      durationMs: 1000,
+    };
+    expect(reduce(done, { kind: "openSettings" }).mode).toBe("settings");
     const sending: AppState = {
       mode: "sending",
       charsTyped: 0,

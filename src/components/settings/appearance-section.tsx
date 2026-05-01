@@ -5,12 +5,15 @@ import type { ReactNode } from "react";
 import { useEffect, useState } from "react";
 import {
   type AppearanceCfg,
+  EDITOR_FONT_SIZE_MAX,
+  EDITOR_FONT_SIZE_MIN,
   FONT_SIZE_MAX,
   FONT_SIZE_MIN,
   FONT_SIZE_PRESETS,
   isScaleNear,
   PROFILE_DESCRIPTIONS,
   PROFILE_LABELS,
+  parseEditorFontSize,
   parseFontSize,
   THEME_PROFILES,
   type ThemeMode,
@@ -39,12 +42,17 @@ export function AppearanceSection({ appearance, onChange }: AppearanceSectionPro
   const [percentDraft, setPercentDraft] = useState<string>(
     String(scaleToPercent(appearance.fontSize)),
   );
+  const [editorPxDraft, setEditorPxDraft] = useState<string>(String(appearance.editorFontSize));
 
   // When the underlying fontSize prop changes (e.g. preset click,
   // global Reset), sync the input.
   useEffect(() => {
     setPercentDraft(String(scaleToPercent(appearance.fontSize)));
   }, [appearance.fontSize]);
+
+  useEffect(() => {
+    setEditorPxDraft(String(appearance.editorFontSize));
+  }, [appearance.editorFontSize]);
 
   const setProfile = (profile: ThemeProfile) => {
     if (profile === appearance.profile) return;
@@ -61,6 +69,11 @@ export function AppearanceSection({ appearance, onChange }: AppearanceSectionPro
     onChange({ ...appearance, fontSize });
   };
 
+  const setEditorFontSize = (editorFontSize: number) => {
+    if (editorFontSize === appearance.editorFontSize) return;
+    onChange({ ...appearance, editorFontSize });
+  };
+
   const commitPercent = () => {
     const pct = Number.parseFloat(percentDraft);
     if (!Number.isFinite(pct)) {
@@ -68,6 +81,15 @@ export function AppearanceSection({ appearance, onChange }: AppearanceSectionPro
       return;
     }
     setFontSize(parseFontSize(pct / 100));
+  };
+
+  const commitEditorPx = () => {
+    const px = Number.parseFloat(editorPxDraft);
+    if (!Number.isFinite(px)) {
+      setEditorPxDraft(String(appearance.editorFontSize));
+      return;
+    }
+    setEditorFontSize(parseEditorFontSize(px));
   };
 
   return (
@@ -188,6 +210,37 @@ export function AppearanceSection({ appearance, onChange }: AppearanceSectionPro
             />
             <span className="text-[11px] text-fg-tertiary">% (press Enter to apply)</span>
           </div>
+        </div>
+      </SettingsSection>
+
+      <SettingsSection
+        title="Editor font size"
+        help="Sets the text panel font size in pixels. Independent from UI size — the editor doesn't scale with the rest of the chrome."
+      >
+        <div className="flex items-center gap-2">
+          <label htmlFor="editor-font-size" className="text-[12px] text-fg-tertiary">
+            Size
+          </label>
+          <input
+            id="editor-font-size"
+            type="number"
+            min={EDITOR_FONT_SIZE_MIN}
+            max={EDITOR_FONT_SIZE_MAX}
+            step={1}
+            value={editorPxDraft}
+            onChange={(e) => setEditorPxDraft(e.target.value)}
+            onBlur={commitEditorPx}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                commitEditorPx();
+              }
+            }}
+            className="h-8 w-20 rounded-md border border-hairline bg-canvas px-2 font-code text-[13px] tabular-nums text-fg outline-none focus:border-accent"
+          />
+          <span className="text-[11px] text-fg-tertiary">
+            px (press Enter to apply, {EDITOR_FONT_SIZE_MIN}–{EDITOR_FONT_SIZE_MAX})
+          </span>
         </div>
       </SettingsSection>
     </div>

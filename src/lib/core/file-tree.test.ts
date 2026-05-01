@@ -5,6 +5,7 @@ import {
   fileExtension,
   isExpanded,
   isTextFile,
+  pickLanguage,
   pruneEmptyFolders,
   type TreeNode,
   toggleExpanded,
@@ -167,5 +168,36 @@ describe("pruneEmptyFolders", () => {
     const out = pruneEmptyFolders(t).children;
     expect(out).toHaveLength(1);
     expect(out[0]?.kind).toBe("file");
+  });
+});
+
+describe("pickLanguage (Q22)", () => {
+  it("returns null for null filename", () => {
+    expect(pickLanguage(null)).toBeNull();
+  });
+  it("returns null for unknown extensions", () => {
+    expect(pickLanguage("data.xyz")).toBeNull();
+    expect(pickLanguage("image.png")).toBeNull();
+  });
+  it("returns null for files with no extension", () => {
+    expect(pickLanguage("README")).toBeNull();
+    expect(pickLanguage("Makefile")).toBeNull();
+  });
+  it("returns an extension for JavaScript-family files", () => {
+    expect(pickLanguage("app.js")).not.toBeNull();
+    expect(pickLanguage("app.jsx")).not.toBeNull();
+    expect(pickLanguage("app.ts")).not.toBeNull();
+    expect(pickLanguage("app.tsx")).not.toBeNull();
+    expect(pickLanguage("app.mjs")).not.toBeNull();
+  });
+  it("returns an extension for python, rust, json, markdown", () => {
+    expect(pickLanguage("script.py")).not.toBeNull();
+    expect(pickLanguage("lib.rs")).not.toBeNull();
+    expect(pickLanguage("config.json")).not.toBeNull();
+    expect(pickLanguage("notes.md")).not.toBeNull();
+  });
+  it("is case-insensitive on the extension", () => {
+    expect(pickLanguage("APP.PY")).not.toBeNull();
+    expect(pickLanguage("Lib.RS")).not.toBeNull();
   });
 });

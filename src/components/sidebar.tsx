@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronDown, ChevronRight, FolderOpen, Settings, Upload } from "lucide-react";
+import { ChevronDown, ChevronRight, FolderOpen, RefreshCw, Settings, Upload } from "lucide-react";
 import { useState } from "react";
 import type { FolderTree } from "@/lib/core/file-tree";
 import { FileExplorer } from "./file-explorer";
@@ -18,6 +18,11 @@ export type SidebarProps = {
   onOpenFolder: () => void;
   onSelectFile: (path: string) => void;
   onToggleFolder: (path: string) => void;
+  /** Re-read whatever is currently loaded (single file or folder
+   * tree) from disk. Disabled when nothing is loaded. */
+  onRefreshExplorer: () => void;
+  /** True iff there's something to refresh (single file or folder). */
+  canRefreshExplorer: boolean;
   onOpenSettings: () => void;
   inSettings: boolean;
   /** Q19 — live update during drag. */
@@ -36,6 +41,8 @@ export function Sidebar({
   onOpenFolder,
   onSelectFile,
   onToggleFolder,
+  onRefreshExplorer,
+  canRefreshExplorer,
   onOpenSettings,
   inSettings,
   onResize,
@@ -68,18 +75,34 @@ export function Sidebar({
 
       {/* D-10/D-11 — Explorer section header (collapsible) + body. */}
       <div className="flex flex-1 flex-col overflow-hidden border-t border-hairline">
-        <button
-          type="button"
-          className="flex h-9 w-full items-center gap-[6px] px-[14px] text-fg-secondary transition-colors hover:bg-bg-hover"
-          onClick={() => setExplorerCollapsed((v) => !v)}
-          data-testid="explorer-section-toggle"
-          aria-expanded={!explorerCollapsed}
-        >
-          <ExplorerChevron size={12} className="text-fg-tertiary" />
-          <span className="font-mono text-[10px] font-medium uppercase tracking-[0.1em] text-fg-tertiary">
-            Explorer
-          </span>
-        </button>
+        <div className="flex h-9 items-center text-fg-secondary">
+          <button
+            type="button"
+            className="flex h-full flex-1 items-center gap-[6px] px-[14px] transition-colors hover:bg-bg-hover"
+            onClick={() => setExplorerCollapsed((v) => !v)}
+            data-testid="explorer-section-toggle"
+            aria-expanded={!explorerCollapsed}
+          >
+            <ExplorerChevron size={12} className="text-fg-tertiary" />
+            <span className="font-mono text-[10px] font-medium uppercase tracking-[0.1em] text-fg-tertiary">
+              Explorer
+            </span>
+          </button>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              if (canRefreshExplorer) onRefreshExplorer();
+            }}
+            disabled={!canRefreshExplorer}
+            data-testid="explorer-refresh"
+            title={canRefreshExplorer ? "Refresh from disk" : "Nothing loaded"}
+            aria-label="Refresh explorer"
+            className="mr-[10px] flex h-6 w-6 items-center justify-center rounded text-fg-tertiary transition-colors hover:bg-bg-hover hover:text-fg-secondary disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-fg-tertiary"
+          >
+            <RefreshCw size={12} />
+          </button>
+        </div>
         {!explorerCollapsed && (
           <FileExplorer
             tree={tree}

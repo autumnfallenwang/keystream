@@ -13,6 +13,8 @@ function defaults(overrides: Partial<SidebarProps> = {}): SidebarProps {
     onOpenFolder: vi.fn(),
     onSelectFile: vi.fn(),
     onToggleFolder: vi.fn(),
+    onRefreshExplorer: vi.fn(),
+    canRefreshExplorer: false,
     onOpenSettings: vi.fn(),
     inSettings: false,
     onResize: vi.fn(),
@@ -63,6 +65,29 @@ describe("Sidebar", () => {
   it("renders the file explorer empty state when tree is null", () => {
     render(<Sidebar {...defaults({ tree: null })} />);
     expect(screen.getByTestId("file-explorer-empty")).toBeInTheDocument();
+  });
+
+  it("explorer refresh icon is disabled when canRefreshExplorer is false", () => {
+    render(<Sidebar {...defaults({ canRefreshExplorer: false })} />);
+    const btn = screen.getByTestId("explorer-refresh") as HTMLButtonElement;
+    expect(btn.disabled).toBe(true);
+  });
+
+  it("explorer refresh icon invokes onRefreshExplorer when enabled", async () => {
+    const onRefreshExplorer = vi.fn();
+    render(<Sidebar {...defaults({ onRefreshExplorer, canRefreshExplorer: true })} />);
+    await userEvent.click(screen.getByTestId("explorer-refresh"));
+    expect(onRefreshExplorer).toHaveBeenCalledOnce();
+  });
+
+  it("clicking the refresh icon does not toggle the Explorer collapse", async () => {
+    const onRefreshExplorer = vi.fn();
+    render(<Sidebar {...defaults({ onRefreshExplorer, canRefreshExplorer: true })} />);
+    const toggle = screen.getByTestId("explorer-section-toggle");
+    expect(toggle.getAttribute("aria-expanded")).toBe("true");
+    await userEvent.click(screen.getByTestId("explorer-refresh"));
+    // Collapse should still be open after refresh click.
+    expect(toggle.getAttribute("aria-expanded")).toBe("true");
   });
 
   it("renders the file explorer with the supplied tree", () => {
