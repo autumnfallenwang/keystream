@@ -1,7 +1,6 @@
 "use client";
 
 import { ChevronLeft, Info, Palette, Sliders, Wrench } from "lucide-react";
-import { ResizeHandle } from "./resize-handle";
 import { SidebarEyebrow, SidebarRow } from "./sidebar-row";
 
 export type SettingsTab = "appearance" | "timing" | "advanced" | "about";
@@ -10,27 +9,11 @@ export type SettingsSidebarProps = {
   activeTab: SettingsTab;
   onTabChange: (next: SettingsTab) => void;
   onBack: () => void;
-  /** Q19 — live update during drag. */
-  onResize: (px: number) => void;
-  /** Q19 — commit on mouseup or double-click reset. */
-  onResizeCommit: (px: number) => void;
-  /** Q19 — current width in px, used as drag-offset anchor. */
-  currentWidthPx: number;
 };
 
-export function SettingsSidebar({
-  activeTab,
-  onTabChange,
-  onBack,
-  onResize,
-  onResizeCommit,
-  currentWidthPx,
-}: SettingsSidebarProps) {
+export function SettingsSidebar({ activeTab, onTabChange, onBack }: SettingsSidebarProps) {
   return (
-    <aside
-      className="relative flex shrink-0 flex-col border-r border-hairline bg-rail"
-      style={{ width: "var(--sidebar-width)" }}
-    >
+    <aside className="flex h-full w-full flex-col border-r border-hairline bg-rail">
       <div className="pb-4 pt-7">
         <SidebarRow icon={<ChevronLeft size={16} />} onClick={onBack}>
           Back to text
@@ -71,7 +54,6 @@ export function SettingsSidebar({
 
       {/* D-14 — version footer retired; version + updater live in
           Settings → About. */}
-      <ResizeHandle onResize={onResize} onCommit={onResizeCommit} currentPx={currentWidthPx} />
     </aside>
   );
 }

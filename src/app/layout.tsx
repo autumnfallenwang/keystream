@@ -36,7 +36,7 @@ export default function RootLayout({
   const fontVars = `${geistSans.variable} ${geistMono.variable} ${jetbrainsMono.variable} ${fraunces.variable}`;
   return (
     <html lang="en" className={`${fontVars} h-full antialiased`}>
-      <body className="min-h-full">{children}</body>
+      <body className="h-full">{children}</body>
     </html>
   );
 }

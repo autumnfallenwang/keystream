@@ -17,9 +17,6 @@ function defaults(overrides: Partial<SidebarProps> = {}): SidebarProps {
     canRefreshExplorer: false,
     onOpenSettings: vi.fn(),
     inSettings: false,
-    onResize: vi.fn(),
-    onResizeCommit: vi.fn(),
-    currentWidthPx: 260,
     ...overrides,
   };
 }
@@ -122,16 +119,5 @@ describe("Sidebar", () => {
     await userEvent.click(screen.getByTestId("explorer-section-toggle"));
     expect(screen.queryByTestId("file-explorer")).toBeNull();
     expect(screen.getByTestId("explorer-section-toggle")).toHaveAttribute("aria-expanded", "false");
-  });
-
-  it("Q19: renders the resize handle", () => {
-    render(<Sidebar {...defaults()} />);
-    expect(screen.getByTestId("sidebar-resize-handle")).toBeInTheDocument();
-  });
-
-  it("Q19: aside uses --sidebar-width CSS var for its width", () => {
-    const { container } = render(<Sidebar {...defaults()} />);
-    const aside = container.querySelector("aside");
-    expect(aside?.style.width).toBe("var(--sidebar-width)");
   });
 });

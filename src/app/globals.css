@@ -409,6 +409,29 @@ html {
   zoom: calc(1 / var(--font-scale));
 }
 
+/* Q23 — react-resizable-panels has the same hit-test sensitivity to
+   ancestor `zoom`: the library reads `getBoundingClientRect()` (post-
+   zoom) and computes resize fractions against pre-zoom panel sizes.
+   At any --font-scale != 1 the drag becomes intermittent (only the
+   exact 1px on which the lib's math agrees registers). Counter-zoom
+   the entire Group so all the lib's pointer math is in native pixels;
+   force the Panel's inner wrapper to be a flex column so children
+   that use flex-1 can stretch to fill height; then re-apply
+   --font-scale on the direct children of the inner wrapper so chrome
+   still scales with UI size. */
+[data-group] {
+  zoom: calc(1 / var(--font-scale));
+}
+[data-panel] > * {
+  display: flex;
+  flex-direction: column;
+}
+[data-panel] > * > * {
+  flex: 1 1 auto;
+  zoom: var(--font-scale);
+  min-height: 0;
+}
+
 button {
   font-family: inherit;
 }

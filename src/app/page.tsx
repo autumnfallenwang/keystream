@@ -2,6 +2,7 @@
 
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
+import { Group, Panel, type PanelSize, Separator, usePanelRef } from "react-resizable-panels";
 import { BinaryFileWarning } from "@/components/binary-file-warning";
 import { CountdownOverlay } from "@/components/countdown-overlay";
 import { MainHeader } from "@/components/main-header";
@@ -14,7 +15,12 @@ import { APPEARANCE_DEFAULT } from "@/lib/core/appearance";
 import type { FolderTree } from "@/lib/core/file-tree";
 import { toggleExpanded } from "@/lib/core/file-tree";
 import { allGatesPass, computeGates } from "@/lib/core/gates";
-import { clampSidebarWidth, SIDEBAR_WIDTH_DEFAULT } from "@/lib/core/sidebar-width";
+import {
+  clampSidebarWidth,
+  SIDEBAR_WIDTH_DEFAULT,
+  SIDEBAR_WIDTH_MAX,
+  SIDEBAR_WIDTH_MIN,
+} from "@/lib/core/sidebar-width";
 import {
   type AppStateCfg,
   checkPermissions,
@@ -564,32 +570,30 @@ export default function Home() {
     });
   }, []);
 
-  // Q19: live update during sidebar drag — write directly to the CSS
-  // var on documentElement, bypassing React re-renders for 60fps
-  // smoothness. No state update yet.
-  const handleSidebarResize = useCallback((px: number) => {
+  // Q19 / Q23 — sidebar resize via react-resizable-panels. The Panel
+  // owns drag/keyboard/ARIA; we own clamp + CSS-var bridge + debounced
+  // persistence. settingsRef gives the debounced save the latest
+  // settings without re-creating the callback on every settings change
+  // (mirrors the onTextChangeRef pattern in text-panel.tsx).
+  const sidebarPanelRef = usePanelRef();
+  const settingsRef = useRef(settings);
+  settingsRef.current = settings;
+  const handlePanelResize = useCallback((size: PanelSize) => {
+    const px = clampSidebarWidth(size.inPixels);
+    // Live: keep --sidebar-width in sync so any consumer beyond the
+    // Panel (theme-provider, future widgets) sees the new width.
     document.documentElement.style.setProperty("--sidebar-width", `${px}px`);
+    setSettings((prev) => (prev.sidebarWidthPx === px ? prev : { ...prev, sidebarWidthPx: px }));
+    if (settingsSaveRef.current !== null) clearTimeout(settingsSaveRef.current);
+    settingsSaveRef.current = setTimeout(() => {
+      void saveSettings({ ...settingsRef.current, sidebarWidthPx: px }).catch((err) => {
+        void logWarning(`page: save_settings_failed: ${String(err)}`);
+      });
+    }, 300);
   }, []);
-
-  // Q19: commit on mouseup or double-click — clamp, update state,
-  // immediately re-apply the CSS var (the React re-render of
-  // ThemeProvider would do this too, but doing it here avoids any
-  // brief visual glitch), and persist via the existing debounce.
-  const handleSidebarCommit = useCallback(
-    (px: number) => {
-      const clamped = clampSidebarWidth(px);
-      const next = { ...settings, sidebarWidthPx: clamped };
-      setSettings(next);
-      document.documentElement.style.setProperty("--sidebar-width", `${clamped}px`);
-      if (settingsSaveRef.current !== null) clearTimeout(settingsSaveRef.current);
-      settingsSaveRef.current = setTimeout(() => {
-        void saveSettings(next).catch((err) => {
-          void logWarning(`page: save_settings_failed: ${String(err)}`);
-        });
-      }, 300);
-    },
-    [settings],
-  );
+  const handleSidebarReset = useCallback(() => {
+    sidebarPanelRef.current?.resize(SIDEBAR_WIDTH_DEFAULT);
+  }, [sidebarPanelRef]);
 
   const handleCountdownCancel = useCallback(() => {
     dispatch({ kind: "countdownCancelled" });
@@ -601,94 +605,104 @@ export default function Home() {
   return (
     <>
       <ThemeProvider appearance={settings.appearance} sidebarWidthPx={settings.sidebarWidthPx} />
-      <div className="flex h-screen bg-canvas text-fg">
-        {inSettings ? (
-          <SettingsSidebar
-            activeTab={settingsTab}
-            onTabChange={setSettingsTab}
-            onBack={handleCloseSettings}
-            onResize={handleSidebarResize}
-            onResizeCommit={handleSidebarCommit}
-            currentWidthPx={settings.sidebarWidthPx}
-          />
-        ) : (
-          <Sidebar
-            tree={loadedFolder}
-            selectedPath={selectedFile}
-            expandedPaths={expandedPaths}
-            onOpenFile={handleLoadFile}
-            onOpenFolder={handleOpenFolder}
-            onSelectFile={handleSelectFile}
-            onToggleFolder={handleToggleFolder}
-            onRefreshExplorer={handleRefreshExplorer}
-            canRefreshExplorer={loadedFolder !== null || selectedFile !== null}
-            onOpenSettings={handleOpenSettings}
-            inSettings={inSettings}
-            onResize={handleSidebarResize}
-            onResizeCommit={handleSidebarCommit}
-            currentWidthPx={settings.sidebarWidthPx}
-          />
-        )}
-        <main className="flex flex-1 flex-col overflow-hidden">
-          {/* Keep the text-panel branch mounted at all times so the
+      <Group orientation="horizontal" className="flex h-screen bg-canvas text-fg">
+        <Panel
+          panelRef={sidebarPanelRef}
+          defaultSize={settings.sidebarWidthPx}
+          minSize={SIDEBAR_WIDTH_MIN}
+          maxSize={SIDEBAR_WIDTH_MAX}
+          onResize={handlePanelResize}
+        >
+          {inSettings ? (
+            <SettingsSidebar
+              activeTab={settingsTab}
+              onTabChange={setSettingsTab}
+              onBack={handleCloseSettings}
+            />
+          ) : (
+            <Sidebar
+              tree={loadedFolder}
+              selectedPath={selectedFile}
+              expandedPaths={expandedPaths}
+              onOpenFile={handleLoadFile}
+              onOpenFolder={handleOpenFolder}
+              onSelectFile={handleSelectFile}
+              onToggleFolder={handleToggleFolder}
+              onRefreshExplorer={handleRefreshExplorer}
+              canRefreshExplorer={loadedFolder !== null || selectedFile !== null}
+              onOpenSettings={handleOpenSettings}
+              inSettings={inSettings}
+            />
+          )}
+        </Panel>
+        <Separator
+          className="cursor-col-resize bg-hairline transition-colors hover:bg-accent/50"
+          style={{ width: 6, flexBasis: 6 }}
+          onDoubleClick={handleSidebarReset}
+          data-testid="sidebar-resize-handle"
+        />
+        <Panel>
+          <main className="flex h-full w-full flex-col overflow-hidden">
+            {/* Keep the text-panel branch mounted at all times so the
               CodeMirror EditorView (and its search-panel state) survives
               a Settings round-trip. Settings is layered on top by hiding
               the text-panel branch via display:none. */}
-          <div className={`flex flex-1 flex-col overflow-hidden ${inSettings ? "hidden" : ""}`}>
-            <MainHeader
-              state={appState}
-              filename={headerFilename}
-              locked={locked}
-              totalChars={text.length}
-              wrap={wrap}
-              canSend={canSend}
-              sendDisabledReason={sendDisabledReason}
-              onToggleLocked={handleToggleLocked}
-              onToggleWrap={handleToggleWrap}
-              onSend={handleSend}
-              onPause={handlePause}
-              onResume={handleResume}
-              onStop={handleStop}
-            />
-            {!(permissions?.accessibility ?? true) && (
-              <button
-                type="button"
-                onClick={handleAccessibilityGate}
-                className="flex shrink-0 items-center justify-center gap-2 border-b border-warn/30 bg-warn/5 px-4 py-2 text-[12px] text-warn transition-colors hover:bg-warn/10"
-                data-testid="accessibility-warning-row"
-              >
-                <span>
-                  Accessibility permission is not granted — click to open System Settings.
-                </span>
-              </button>
-            )}
-            {binaryWarning === null ? (
-              <TextPanel
-                text={text}
-                locked={locked}
+            <div className={`flex flex-1 flex-col overflow-hidden ${inSettings ? "hidden" : ""}`}>
+              <MainHeader
                 state={appState}
-                wrap={wrap}
                 filename={headerFilename}
-                onTextChange={setText}
-                onLoadFile={handleLoadFile}
+                locked={locked}
+                totalChars={text.length}
+                wrap={wrap}
+                canSend={canSend}
+                sendDisabledReason={sendDisabledReason}
+                onToggleLocked={handleToggleLocked}
+                onToggleWrap={handleToggleWrap}
+                onSend={handleSend}
+                onPause={handlePause}
+                onResume={handleResume}
+                onStop={handleStop}
               />
-            ) : (
-              <BinaryFileWarning
-                filename={binaryWarning.filename}
-                reason={binaryWarning.reason}
-                onBack={handleBinaryWarningBack}
+              {!(permissions?.accessibility ?? true) && (
+                <button
+                  type="button"
+                  onClick={handleAccessibilityGate}
+                  className="flex shrink-0 items-center justify-center gap-2 border-b border-warn/30 bg-warn/5 px-4 py-2 text-[12px] text-warn transition-colors hover:bg-warn/10"
+                  data-testid="accessibility-warning-row"
+                >
+                  <span>
+                    Accessibility permission is not granted — click to open System Settings.
+                  </span>
+                </button>
+              )}
+              {binaryWarning === null ? (
+                <TextPanel
+                  text={text}
+                  locked={locked}
+                  state={appState}
+                  wrap={wrap}
+                  filename={headerFilename}
+                  onTextChange={setText}
+                  onLoadFile={handleLoadFile}
+                />
+              ) : (
+                <BinaryFileWarning
+                  filename={binaryWarning.filename}
+                  reason={binaryWarning.reason}
+                  onBack={handleBinaryWarningBack}
+                />
+              )}
+            </div>
+            {inSettings && (
+              <SettingsShell
+                settings={settings}
+                onChange={handleSettingsChange}
+                onReset={handleSettingsReset}
+                activeTab={settingsTab}
               />
             )}
-          </div>
-          {inSettings && (
-            <SettingsShell
-              settings={settings}
-              onChange={handleSettingsChange}
-              onReset={handleSettingsReset}
-              activeTab={settingsTab}
-            />
-          )}
-        </main>
+          </main>
+        </Panel>
         {showCountdown && (
           <CountdownOverlay
             remaining={appState.remaining}
@@ -696,7 +710,7 @@ export default function Home() {
             onCancel={handleCountdownCancel}
           />
         )}
-      </div>
+      </Group>
     </>
   );
 }

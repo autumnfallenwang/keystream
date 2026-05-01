@@ -4,7 +4,6 @@ import { ChevronDown, ChevronRight, FolderOpen, RefreshCw, Settings, Upload } fr
 import { useState } from "react";
 import type { FolderTree } from "@/lib/core/file-tree";
 import { FileExplorer } from "./file-explorer";
-import { ResizeHandle } from "./resize-handle";
 import { SidebarRow } from "./sidebar-row";
 
 export type SidebarProps = {
@@ -25,12 +24,6 @@ export type SidebarProps = {
   canRefreshExplorer: boolean;
   onOpenSettings: () => void;
   inSettings: boolean;
-  /** Q19 — live update during drag. */
-  onResize: (px: number) => void;
-  /** Q19 — commit on mouseup or double-click reset. */
-  onResizeCommit: (px: number) => void;
-  /** Q19 — current width in px, used as drag-offset anchor. */
-  currentWidthPx: number;
 };
 
 export function Sidebar({
@@ -45,9 +38,6 @@ export function Sidebar({
   canRefreshExplorer,
   onOpenSettings,
   inSettings,
-  onResize,
-  onResizeCommit,
-  currentWidthPx,
 }: SidebarProps) {
   // D-10 — collapse the entire Explorer section. Distinct from the
   // per-folder collapse inside the tree itself.
@@ -55,10 +45,7 @@ export function Sidebar({
   const ExplorerChevron = explorerCollapsed ? ChevronRight : ChevronDown;
 
   return (
-    <aside
-      className="relative flex shrink-0 flex-col border-r border-hairline bg-rail"
-      style={{ width: "var(--sidebar-width)" }}
-    >
+    <aside className="flex h-full w-full flex-col border-r border-hairline bg-rail">
       <div className="px-5 pb-4 pt-7">
         <h1 className="font-display text-[18px] font-medium tracking-tight text-fg">Keystream</h1>
       </div>
@@ -121,8 +108,6 @@ export function Sidebar({
           Settings
         </SidebarRow>
       </div>
-
-      <ResizeHandle onResize={onResize} onCommit={onResizeCommit} currentPx={currentWidthPx} />
     </aside>
   );
 }

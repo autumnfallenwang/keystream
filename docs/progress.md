@@ -23,12 +23,12 @@ v1 freeze: 140 cargo tests + 78 vitest tests passing. Most v1 code becomes obsol
 | v2-9 | User-resizable sidebar width (Q19) | done — operator smoke pending |
 | v2-8 | File explorer sidebar (Q18) | done — operator smoke pending |
 | v2-10 | Replace text panel with CodeMirror 6 (Q22) | done — operator smoke pending |
-| v2-11 | Replace sidebar resize handle with react-resizable-panels (Q23) | pending — walkthrough drag-drift fired this |
+| v2-11 | Replace sidebar resize handle with react-resizable-panels (Q23) | done — operator smoke pending |
 | v2-6 | Polish + ship | pending — depends on v2-11 operator smoke |
 
 Each phase's contract + rationale: see the matching Q-decision(s) in [`design-plan.md`](design-plan.md). Each phase's implementation plan is drafted by `/dev-task` at the time of fire and lives in `~/.claude/plans/`.
 
-**Current test count:** 274 vitest passing · 103 cargo passing.
+**Current test count:** 262 vitest passing · 103 cargo passing.
 
 ## What's Next
 

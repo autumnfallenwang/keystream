@@ -313,7 +313,7 @@ Append-only. Q4–Q11 are RETIRED in v2 (the v1 OCR-pipeline decisions). Live de
 - Constraint enforcement (min/max sizes) handled in-library, no `clampSidebarWidth` round-trip during drag.
 
 **Domain extensions to port (the parts that stay):**
-- **Pixel-based persistence (Q19):** the library sizes panels in percentages of viewport width. We convert at the boundary: persisted `sidebarWidthPx` → `(px / window.innerWidth) * 100` on mount; `onLayout` callback returns `[sidebarPct, mainPct]` → `sidebarWidthPx = sidebarPct * window.innerWidth / 100` on commit. The min/max constants stay in `sidebar-width.ts` and are converted to percentages at mount time too.
+- **Pixel-based persistence (Q19):** as of `react-resizable-panels` v4.x, `minSize` / `maxSize` / `defaultSize` accept numeric pixel values directly, and `onResize` returns `{ asPercentage, inPixels }`. We stay in pixels end-to-end — no boundary conversion needed. The min/max constants in `sidebar-width.ts` pass directly to `<Panel minSize={...} maxSize={...}>`. (Q23's earlier draft assumed a percentage-only API.)
 - **Double-click reset to default:** library's `<PanelResizeHandle>` exposes `onDoubleClick`; we dispatch the same reset path as today.
 - **Settings persistence (debounced):** the existing `handleSidebarCommit` callback fires on `onLayout` after the user releases the drag. Same debounce timing.
 - **CSS var bridge:** during drag, the library updates panel sizes via inline `flex-basis`. We keep `--sidebar-width` for any non-panel consumer (currently none beyond the sidebar itself) by syncing it from `onLayout`.
